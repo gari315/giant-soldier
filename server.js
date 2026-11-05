@@ -29,7 +29,7 @@ const server = http.createServer((req, res) => {
   fs.readFile(f, (e, d) => {
     if (e) { res.writeHead(404); return res.end('not found'); }
     const ext = path.extname(f).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600' });
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': ext === '.mp3' || ext === '.png' || ext === '.jpg' ? 'public, max-age=86400' : 'no-cache' });
     res.end(d);
   });
 });
