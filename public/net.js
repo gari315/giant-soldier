@@ -1,5 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
+const NET_BUILD = '2026-11-05b'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -62,6 +63,7 @@ const NET = (() => {
   $('lbStart').onclick = () => N.send({ t: 'start' });
   $('lbBack').onclick = () => { if (N.room) { N.send({ t: 'leave' }); sessionStorage.removeItem(SK); N.room = null; N.wasIn = false; N.want = false; } N.closeLobby(); };
   $('lbName').addEventListener('change', () => N.send({ t: 'name', name: name() }));
+  $('lbBack').insertAdjacentHTML('afterend', '<div style="width:100%;font-size:11px;opacity:.55;text-align:right">build ' + NET_BUILD + '</div>'); console.log('[GvS] net.js build', NET_BUILD);
   return N;
 })();
 
