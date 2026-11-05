@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: giant-vs-soldier
-    runtime: node
-    buildCommand: npm install
-    startCommand: npm start
-    plan: free
-    healthCheckPath: /healthz
