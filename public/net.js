@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-05b'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-05c'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -71,12 +71,15 @@ const NET = (() => {
 const ONL = (() => {
   const O = { active: false, snaps: [], off: null, rem: new Map(), acc: 0, me: null, DELAY: 100, SEND_HZ: 20, FIG: null, FEET: 0, runBtn: false, guard: false,
     TURN_MUL: 1.6, SPD_MUL: 1,                                            // 巨人の旋回・速度の調整用
-    GRAB_REACH: 12, CRUSH_CD: 4000, GUARD_CD: 10000, STOMP_T: .45,         // サーバー(server.js の C)と合わせる
+    GRAB_REACH: 12, CRUSH_R: 8, CRUSH_CD: 4000, GUARD_CD: 10000, STOMP_T: .45,         // サーバー(server.js の C)と合わせる
     grab: null, guardUntil: 0, stompT: 0, cd: { grab: 0, crush: 0, guard: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
   const $$ = id => document.getElementById(id);
   const st = document.createElement('style');
   st.textContent = `.ntag{position:fixed;z-index:2;pointer-events:none;display:none;font:700 12px "Noto Serif JP",serif;color:#fff;text-shadow:0 1px 3px #000;transform:translate(-50%,-100%);white-space:nowrap}.ntag.off{color:#f88}
-.gbt{position:fixed;z-index:6;display:none;width:76px;height:76px;border-radius:50%;font:700 14px sans-serif;background:#0007;color:#fff;border:2px solid #fff8;touch-action:none}
+.gbt{position:fixed;z-index:4;display:none;width:78px;height:78px;border-radius:50%;font:700 13px sans-serif;line-height:1.2;background:#000a;color:#fff;border:2px solid #fff9;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.gbt.on{background:#d9822bdd;border-color:#fff}.gbt.cd{opacity:.5}
+#pauseBtn,#vw,#lockRetry{z-index:20!important}
+#gToast{position:fixed;z-index:8;left:50%;top:22%;transform:translateX(-50%);max-width:90vw;padding:8px 16px;border-radius:20px;background:#000b;color:#fff;font:700 15px sans-serif;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
 #resOv{display:none;position:fixed;inset:0;z-index:12;background:#000c;color:#efe6da;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:"Noto Serif JP",serif;text-align:center;padding:16px}
 #resOv h1{font-size:34px;margin:0}#resOv p{margin:0;opacity:.85}#resOv .r{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 #specBar{display:none;position:fixed;z-index:6;left:50%;bottom:14px;transform:translateX(-50%);background:#000a;color:#fff;padding:6px 12px;border-radius:20px;font:14px sans-serif;gap:10px;align-items:center}`;
@@ -84,7 +87,8 @@ const ONL = (() => {
   document.body.insertAdjacentHTML('beforeend', '<div id="resOv"><h1 id="resT"></h1><p id="resS"></p><div class="r" id="resB"></div></div><div id="specBar"><span id="specTxt"></span><button class="b" id="specBtn">次へ</button></div>');
   const mkBtn = (id, label, right, bottom, fn) => { const b = document.createElement('button'); b.id = id; b.className = 'gbt'; b.textContent = label; b.style.right = right + 'px'; b.style.bottom = bottom + 'px';
     const h = v => e => { e.preventDefault(); e.stopPropagation(); fn(v); };
-    ['pointerdown', 'touchstart'].forEach(t => b.addEventListener(t, h(true), { passive: false })); ['pointerup', 'pointercancel', 'pointerleave', 'touchend', 'touchcancel'].forEach(t => b.addEventListener(t, h(false), { passive: false }));
+    b.addEventListener('pointerdown', e => { b.classList.add('on'); h(true)(e); }); ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => b.addEventListener(t, e => { b.classList.remove('on'); h(false)(e); }));
+    b.addEventListener('contextmenu', e => e.preventDefault());
     document.body.appendChild(b); return b; };
   const bRun = mkBtn('gRun', '走る', 18, 30, v => { O.runBtn = v; });
   const bGrab = mkBtn('gGrab', '掴む', 110, 30, v => { if (v) actGrab(); });
@@ -148,22 +152,47 @@ const ONL = (() => {
   };
 
   // ---- 巨人プレイヤーの行動 ----
+  const toastEl = document.createElement('div'); toastEl.id = 'gToast'; document.body.appendChild(toastEl); let toastT = 0;
+  const toast = t => { toastEl.textContent = t; toastEl.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => { toastEl.style.opacity = 0; }, 1500); };
+  const canAct = () => isG() && !over && !isPaused && !O.dead;
   function actGrab() {
-    if (!isG() || over || O.grab || Date.now() < O.cd.grab || Date.now() < O.guardUntil) return;
-    const o = GI[0]; useG(o); if (gs.parts.leftArm.severed && gs.parts.rightArm.severed) { popup('両腕がなく掴めない', 'big'); return; }
+    if (!canAct() || O.grab) return; const now = Date.now(); if (now < O.cd.grab) return;
+    if (now < O.guardUntil) return toast('うなじ守り中は掴めません');
+    const o = GI[0]; useG(o); if (gs.parts.leftArm.severed && gs.parts.rightArm.severed) return toast('両腕がなく掴めません');
     const sc = G.scale.x, fx = Math.sin(gs.yaw), fz = Math.cos(gs.yaw); let best = null, bd = 1e9;
     O.rem.forEach((r, id) => { if (!r.mesh.visible) return; const dx = r.mesh.position.x - G.position.x, dz = r.mesh.position.z - G.position.z, d = Math.hypot(dx, dz);
       if (d <= O.GRAB_REACH * sc + 1 && dx * fx + dz * fz > 0 && d < bd) { bd = d; best = id; } }); // 前方のみ
-    O.cd.grab = Date.now() + 700; if (best) NET.send({ t: 'event', k: 'grab', id: best });
+    O.cd.grab = now + 700;
+    if (best) { NET.send({ t: 'event', k: 'grab', id: best }); toast('掴む！'); } else toast('前方に掴める兵士がいません（正面・近くに捉える）');
   }
-  function actCrush() { if (!isG() || over || Date.now() < O.cd.crush) return; O.cd.crush = Date.now() + O.CRUSH_CD; NET.send({ t: 'event', k: 'crush' }); }
-  function actGuard() { if (!isG() || over || O.grab || Date.now() < O.cd.guard) return; O.cd.guard = Date.now() + O.GUARD_CD; NET.send({ t: 'event', k: 'guard' }); }
-  addEventListener('mousedown', e => { if (!O.active || !isG() || over || !(document.pointerLockElement || mode === 'PC')) return; if (e.target.closest && e.target.closest('button,#lobby,#resOv')) return; if (e.button === 0) actGrab(); else if (e.button === 2) actCrush(); });
+  function actCrush() {
+    if (!canAct()) return; const now = Date.now();
+    if (now < O.cd.crush) return toast('踏みつぶしは あと' + Math.ceil((O.cd.crush - now) / 1000) + '秒');
+    O.cd.crush = now + O.CRUSH_CD; NET.send({ t: 'event', k: 'crush' }); toast('踏みつぶし！');
+  }
+  function actGuard() {
+    if (!canAct() || O.grab) return; const now = Date.now();
+    if (now < O.cd.guard) return toast('うなじ守りは あと' + Math.ceil((O.cd.guard - now) / 1000) + '秒');
+    O.cd.guard = now + O.GUARD_CD; NET.send({ t: 'event', k: 'guard' }); toast('うなじ守り！（動けません）');
+  }
+  const vwToggle = () => { const n = Date.now(); if (!O.active || !isG() || n - (O.vwT || 0) < 350) return; O.vwT = n; O.fp = !O.fp; $$('vw').textContent = O.fp ? '三人称へ (V)' : '一人称へ (V)'; toast(O.fp ? '一人称（巨人の目線）' : '三人称'); };
+  ['click', 'touchstart'].forEach(t => $$('vw').addEventListener(t, vwToggle, { passive: true }));
+  addEventListener('mousedown', e => { if (!O.active || !isG() || over || isPaused || !(document.pointerLockElement || mode === 'PC')) return; if (e.target.closest && e.target.closest('button,#lobby,#resOv,#pauseOv')) return; if (e.button === 0) actGrab(); else if (e.button === 2) actCrush(); });
   addEventListener('contextmenu', e => { if (O.active) e.preventDefault(); });
-  addEventListener('keydown', e => { if (!O.active) return;
-    if (isG()) { if (e.code === 'Space') { actCrush(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); }
+  addEventListener('keydown', e => { if (!O.active || isPaused) return;
+    if (isG()) { if (e.code === 'Space') { actCrush(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); else if (e.code === 'KeyV') vwToggle(); }
     else if (O.dead && e.code === 'Tab') { O.specIdx++; e.preventDefault(); } });
   $$('specBtn').onclick = () => { O.specIdx++; };
+
+  // 視覚効果: 踏みつぶしの衝撃波 / うなじ守りのバリア
+  O.fx = []; let shield = null;
+  function ring() { const sc = GI[0].G.scale.x, m = new THREE.Mesh(new THREE.RingGeometry(.9, 1.3, 48), new THREE.MeshBasicMaterial({ color: 0xffe2a8, transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.set(GI[0].G.position.x, .5, GI[0].G.position.z); S.add(m); O.fx.push({ m, t: 0, R: (O.CRUSH_R || 8) * sc }); }
+  function fxStep(dt) {
+    for (let i = O.fx.length - 1; i >= 0; i--) { const f = O.fx[i]; f.t += dt; const k = Math.min(1, f.t / .6); f.m.scale.setScalar(1 + k * f.R); f.m.material.opacity = .85 * (1 - k); if (k >= 1) { S.remove(f.m); O.fx.splice(i, 1); } }
+    const on = Date.now() < O.guardUntil; if (on && !shield) { shield = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 12), new THREE.MeshBasicMaterial({ color: 0x66aaff, transparent: true, opacity: .4, depthWrite: false })); GI[0].nape.add(shield); }
+    if (shield) { shield.visible = on; if (on) shield.scale.setScalar(1 + .08 * Math.sin(Date.now() / 60)); }
+  }
 
   function giantStep(dt) {
     const o = GI[0]; useG(o); P.pitch = Math.max(-.9, Math.min(.5, P.pitch));
@@ -188,8 +217,12 @@ const ONL = (() => {
     buildingList.forEach((b, bi) => { if (!b.collapsing && !b.destroyed && (Math.hypot(b.px - gx, b.pz - gz) < b.w / 2 + 9 * G.scale.x || (fr && Math.hypot(b.px - gx2, b.pz - gz2) < b.w / 2 + 9 * G.scale.x))) { O.collapse(bi); NET.send({ t: 'event', k: 'collapse', b: bi }); } });
     O.pose(o, dt);
   }
-  function giantCam() {
-    const o = GI[0]; useG(o); const sc = G.scale.x, T = new THREE.Vector3(G.position.x, 24 * sc, G.position.z), cp = Math.cos(P.pitch), dist = 72 * sc;
+  function giantCam() { // 巨人の後ろ上方の三人称（視界は広め）/ Vで一人称（巨人の目線）
+    const o = GI[0]; useG(o); const sc = G.scale.x, fp = O.fp && isG(); head.visible = !fp;
+    if (fp) { const hp = headG.getWorldPosition(new THREE.Vector3()), cp = Math.cos(P.pitch), fx = -Math.sin(P.yaw) * cp, fz = -Math.cos(P.yaw) * cp, fy = Math.sin(P.pitch);
+      cam.position.set(hp.x + fx * 2.5 * sc, hp.y + .8 * sc, hp.z + fz * 2.5 * sc); cam.lookAt(cam.position.x + fx * 10, cam.position.y + fy * 10, cam.position.z + fz * 10);
+      if (cam.fov !== 82) { cam.fov = 82; cam.updateProjectionMatrix(); } sky.position.copy(cam.position); return; }
+    const T = new THREE.Vector3(G.position.x, 24 * sc, G.position.z), cp = Math.cos(P.pitch), dist = 72 * sc;
     cam.position.set(T.x + Math.sin(P.yaw) * cp * dist, Math.max(4, T.y - Math.sin(P.pitch) * dist + 12 * sc), T.z + Math.cos(P.yaw) * cp * dist);
     cam.lookAt(T); if (cam.fov !== 74) { cam.fov = 74; cam.updateProjectionMatrix(); } sky.position.copy(cam.position);
   }
@@ -221,7 +254,7 @@ const ONL = (() => {
       popup(by === 'eat' ? '食べられた…観戦に切り替えます' : by === 'crush' ? '踏みつぶされた…観戦に切り替えます' : '脱落', 'big'); }
   }
   function stomp() {
-    O.stompT = O.STOMP_T; useG(GI[0]); const sc = G.scale.x, near = Math.hypot(P.pos.x - G.position.x, P.pos.z - G.position.z) < 90 || isG();
+    O.stompT = O.STOMP_T; useG(GI[0]); ring(); const sc = G.scale.x, near = Math.hypot(P.pos.x - G.position.x, P.pos.z - G.position.z) < 90 || isG();
     setTimeout(() => { for (let q = 0; q < 16; q++) { const a = Math.random() * 6.283, r = (4 + Math.random() * 4) * sc;
       steam.emit(new THREE.Vector3(G.position.x + Math.cos(a) * r, .6, G.position.z + Math.sin(a) * r), new THREE.Vector3(Math.cos(a) * 10, 4 + Math.random() * 4, Math.sin(a) * 10), 1.6, 10); }
       spark(new THREE.Vector3(G.position.x, .5, G.position.z), 0xddaa77); shake = Math.max(shake, near ? 1 : .3); }, O.STOMP_T * 500);
@@ -280,7 +313,7 @@ const ONL = (() => {
       O.FIG.updateMatrixWorld(true); O.FEET = new THREE.Box3().setFromObject(O.FIG).min.y; } // 足元を基準に置くための補正
     gasStations();
     if (!isG()) { const s = SPAWN[O.me.idx % 4]; P.pos.set(s[0], 1.7, s[1]); P.yaw = 0; P.pitch = 0; return; }
-    P.eaten = true; P.pos.set(0, 400, 0); P.yaw = Math.PI; P.pitch = -.25; // 兵士用の物理は止め、入力は巨人に使う
+    O.fp = false; $$('vw').textContent = '一人称へ (V)'; P.eaten = true; P.pos.set(0, 400, 0); P.yaw = Math.PI; P.pitch = -.25; // 兵士用の物理は止め、入力は巨人に使う
     const o = GI[0]; useG(o); G.visible = true; G.position.set(0, 0, 0); gs.yaw = 0; G.rotation.y = 0; gs.dead = 0; gs.spd = 0;
     ['fire', 'rel', 'sbtn', 'spc', 'gas', 'gbtn'].forEach(id => { const e = $$(id); if (e) { O.ui.push([e, e.style.display]); e.style.display = 'none'; } });
     if (mode === 'SP') GBTN.forEach(b => b.style.display = 'block');
@@ -345,9 +378,12 @@ const ONL = (() => {
         G.position.set(lp(ga.p[0], gb.p[0], k), lp(ga.p[1], gb.p[1], k), lp(ga.p[2], gb.p[2], k)); G.rotation.y = gs.yaw; O.pose(o, realDt);
       }
     }
+    fxStep(realDt);
+    if (giant) { const c1 = Math.ceil((O.cd.crush - now) / 1000), c2 = Math.ceil((O.cd.guard - now) / 1000);
+      bCrush.textContent = c1 > 0 ? '踏みつぶし ' + c1 : '踏みつぶし'; bCrush.classList.toggle('cd', c1 > 0); bGuard.textContent = c2 > 0 ? 'うなじ守り ' + c2 : 'うなじ守り'; bGuard.classList.toggle('cd', c2 > 0); bRun.classList.toggle('on', O.runBtn); }
     // HUD とカメラ
     const cdS = t => Math.max(0, Math.ceil((t - now) / 1000));
-    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 踏みつぶし ${cdS(O.cd.crush) || '可'} ｜ うなじ守り ${cdS(O.cd.guard) || '可'}${O.guard ? '（発動中）' : ''}`
+    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 踏みつぶし ${cdS(O.cd.crush) || '可'} ｜ うなじ守り ${cdS(O.cd.guard) || '可'}${O.guard ? '（発動中）' : ''}${mode === 'PC' ? ' ｜ 左クリック掴む / 右クリック・Space踏みつぶし / Cうなじ守り / Shift走る / V視点' : ''}`
       : O.dead ? '観戦中（クリック/Tabで視点切替）' : `生存兵士 ${O.al}人 ｜ 巨人のうなじを背後から斬れ${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}`;
     hud.msg.textContent = msg;
     if (giant) giantCam(); else if (O.dead && !over) specCam();
