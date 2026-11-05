@@ -241,7 +241,7 @@ function addFountain(x,z,R){addM(new THREE.CylinderGeometry(R,R+.6,1.5,36),stone
  PROPS.push({x,z,r:R+.3,h:1.8},{x,z,r:1.6,h:11});}
 function addBench(x,z,ang){const g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=ang;
  const seat=new THREE.Mesh(new THREE.BoxGeometry(4.2,.35,1.3),woodM);seat.position.y=1.1;const back=new THREE.Mesh(new THREE.BoxGeometry(4.2,1,.25),woodM);back.position.set(0,1.8,-.55);
- [-1.7,1.7].forEach(dx=>{const l=new THREE.Mesh(new THREE.BoxGeometry(.3,1.1,1.2),ironM);l.position.set(dx,.55,0);g.add(l);});g.add(seat,back);g.traverse(o=>{o.receiveShadow=true;});S.add(g);{const cx=Math.cos(ang)*1.4,cz=-Math.sin(ang)*1.4;PROPS.push({x:x+cx,z:z+cz,r:1.2,h:3},{x:x-cx,z:z-cz,r:1.2,h:3});}}
+ [-1.7,1.7].forEach(dx=>{const l=new THREE.Mesh(new THREE.BoxGeometry(.3,1.1,1.2),ironM);l.position.set(dx,.55,0);g.add(l);});g.add(seat,back);g.traverse(o=>{o.receiveShadow=true;});S.add(g);/* ベンチは当たり判定なし(見た目のみ) */}
 function addLamp(x,z){addM(new THREE.CylinderGeometry(.22,.3,7,8),ironM,x,3.5,z,true);addM(new THREE.BoxGeometry(1.1,1.4,1.1),lampM,x,7.6,z);addM(new THREE.ConeGeometry(.95,.8,4),ironM,x,8.7,z).rotation.y=Math.PI/4;PROPS.push({x,z,r:.5,h:8});}
 function addObelisk(x,z){addM(new THREE.CylinderGeometry(4.2,4.8,1.6,4),darkStoneM,x,.8,z,true).rotation.y=Math.PI/4;addM(new THREE.CylinderGeometry(1.3,2.3,34,4),stoneM,x,18.6,z,true).rotation.y=Math.PI/4;addM(new THREE.ConeGeometry(1.35,3.2,4),stoneM,x,37.2,z,true).rotation.y=Math.PI/4;PROPS.push({x,z,r:3.1,h:36});}
 function addPond(x,z,R){addM(new THREE.CylinderGeometry(R+1.2,R+1.4,1,32),darkStoneM,x,.5,z);addM(new THREE.CylinderGeometry(R,R,.2,32),waterM,x,.95,z);PROPS.push({x,z,r:R+1.4,h:1.4});}
@@ -2013,5 +2013,5 @@ loop();
 <div class="r"><button class="b" id="roleG">巨人</button><button class="b" id="roleS">兵士</button><button class="b go" id="lbStart">開始（ホスト）</button></div>
 <p style="font-size:12px;opacity:.7;margin:0">巨人1人 対 兵士最大4人。2人から開始できます。</p></div>
 <div class="r"><button class="b" id="lbBack">タイトルへ</button></div></div></div>
-<script src="net.js?v=2026-11-05b"></script>
+<script src="net.js?v=2026-11-05c"></script>
 </body></html>
