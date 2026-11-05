@@ -357,3 +357,5 @@ const ONL = (() => {
   });
   return O;
 })();
+// index.html のフックは window.ONL を見るため、const 宣言のままでは見えない。明示的に公開する
+window.NET = NET; window.ONL = ONL;
