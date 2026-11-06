@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-05d'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-05e'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -72,11 +72,14 @@ const ONL = (() => {
   const O = { active: false, snaps: [], off: null, rem: new Map(), acc: 0, me: null, DELAY: 100, SEND_HZ: 20, FIG: null, FEET: 0, runBtn: false, guard: false,
     TURN_MUL: 1.6, SPD_MUL: 1,                                            // 巨人の旋回・速度の調整用
     GRAB_REACH: 12, CRUSH_R: 8, CRUSH_CD: 4000, GUARD_CD: 10000, STOMP_T: .45,         // サーバー(server.js の C)と合わせる
-    grab: null, guardUntil: 0, stompT: 0, cd: { grab: 0, crush: 0, guard: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
+    grab: null, camD: 72, camH: 12, camBtn: { d: 0, h: 0 }, armBtn: [false, false], armT: null, guardUntil: 0, stompT: 0, cd: { grab: 0, crush: 0, guard: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
   const $$ = id => document.getElementById(id);
+  try { const j = JSON.parse(localStorage.getItem('gvsGiantCam') || 'null'); if (j) { O.camD = Math.max(18, Math.min(220, +j.d || 72)); O.camH = Math.max(-10, Math.min(90, isNaN(+j.h) ? 12 : +j.h)); } } catch (e) {}
+  const camSave = () => { try { localStorage.setItem('gvsGiantCam', JSON.stringify({ d: O.camD, h: O.camH })); } catch (e) {} };
   const st = document.createElement('style');
   st.textContent = `.ntag{position:fixed;z-index:2;pointer-events:none;display:none;font:700 12px "Noto Serif JP",serif;color:#fff;text-shadow:0 1px 3px #000;transform:translate(-50%,-100%);white-space:nowrap}.ntag.off{color:#f88}
 .gbt{position:fixed;z-index:4;display:none;width:78px;height:78px;border-radius:50%;font:700 13px sans-serif;line-height:1.2;background:#000a;color:#fff;border:2px solid #fff9;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.gbt.sm{width:44px;height:44px;border-radius:10px;font-size:15px}
 .gbt.on{background:#d9822bdd;border-color:#fff}.gbt.cd{opacity:.5}
 #pauseBtn,#vw,#lockRetry{z-index:20!important}
 @media (pointer:coarse){html,body{position:fixed!important;inset:0;width:100%;height:100%;overflow:hidden!important;overscroll-behavior:none}}
@@ -87,7 +90,7 @@ const ONL = (() => {
 #specBar{display:none;position:fixed;z-index:6;left:50%;bottom:14px;transform:translateX(-50%);background:#000a;color:#fff;padding:6px 12px;border-radius:20px;font:14px sans-serif;gap:10px;align-items:center}`;
   document.head.appendChild(st);
   document.body.insertAdjacentHTML('beforeend', '<div id="resOv"><h1 id="resT"></h1><p id="resS"></p><div class="r" id="resB"></div></div><div id="specBar"><span id="specTxt"></span><button class="b" id="specBtn">次へ</button></div>');
-  const mkBtn = (id, label, right, bottom, fn) => { const b = document.createElement('button'); b.id = id; b.className = 'gbt'; b.textContent = label; b.style.right = right + 'px'; b.style.bottom = bottom + 'px';
+  const mkBtn = (id, label, right, bottom, fn, cls, top) => { const b = document.createElement('button'); b.id = id; b.className = 'gbt ' + (cls || ''); b.textContent = label; b.style.right = right + 'px'; if (top != null) b.style.top = top + 'px'; else b.style.bottom = bottom + 'px';
     const h = v => e => { e.preventDefault(); e.stopPropagation(); fn(v); };
     b.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; b.classList.add('on'); h(true)(e); }); ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => b.addEventListener(t, e => { if (e.pointerType === 'touch') return; b.classList.remove('on'); h(false)(e); }));
     b.addEventListener('contextmenu', e => e.preventDefault());
@@ -97,7 +100,15 @@ const ONL = (() => {
   const bGrab = mkBtn('gGrab', '掴む', 110, 30, v => { if (v) actGrab(); });
   const bCrush = mkBtn('gCrush', '踏みつぶし', 18, 120, v => { if (v) actCrush(); });
   const bGuard = mkBtn('gGuard', 'うなじ守り', 110, 120, v => { if (v) actGuard(); });
-  const GBTN = [bRun, bGrab, bCrush, bGuard];
+  // 腕の操作（押している間、スティックが「移動」から「その腕の動き」に切り替わる）。右腕=巨人の右、左腕=巨人の左
+  const bArmR = mkBtn('gArmR', '右腕', 18, 210, v => { O.armBtn[0] = v; });
+  const bArmL = mkBtn('gArmL', '左腕', 110, 210, v => { O.armBtn[1] = v; });
+  // 三人称カメラの調整（押している間、距離/高さが変わる）
+  const bCamIn = mkBtn('gCamIn', '拡', 8 + 3 * 50, 0, v => { O.camBtn.d = v ? -1 : 0; }, 'sm', 56);
+  const bCamOut = mkBtn('gCamOut', '縮', 8 + 2 * 50, 0, v => { O.camBtn.d = v ? 1 : 0; }, 'sm', 56);
+  const bCamUp = mkBtn('gCamUp', '上', 8 + 50, 0, v => { O.camBtn.h = v ? 1 : 0; }, 'sm', 56);
+  const bCamDn = mkBtn('gCamDn', '下', 8, 0, v => { O.camBtn.h = v ? -1 : 0; }, 'sm', 56);
+  const GBTN = [bRun, bGrab, bCrush, bGuard, bArmR, bArmL, bCamIn, bCamOut, bCamUp, bCamDn];
 
   const V = new THREE.Vector3(), r2 = n => Math.round(n * 100) / 100, ad = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b)), lp = (a, b, k) => a + (b - a) * k;
   const SPAWN = [[-6, 60], [6, 60], [-6, 72], [6, 72]];
@@ -138,12 +149,14 @@ const ONL = (() => {
       let qs, qe;
       if (tgt && i === gs.arm) { const q2 = ikArm(A, chest.worldToLocal(tgt.clone()), gs.prone > .5 ? pronePole(A) : null); qs = q2[0]; qe = q2[1]; }
       else if (np && !(gs.prone > .12)) { const q2 = ikArm(A, chest.worldToLocal(np.clone().add(new THREE.Vector3(0, -.8, 0))), null); qs = q2[0]; qe = q2[1]; }
+      else if (O.armT && O.armT[i] && !(gs.prone > .12) && !gr) { const R = 13, ax = O.armT[i][0], ay = O.armT[i][1]; // スティック右=巨人の右へ（モデルでは -x）
+        const Tt = A.sh.position.clone().add(new THREE.Vector3(-ax * R * .9, ay * R * .9 + 1, R * .75 * (1 - .25 * Math.abs(ay)))); const q2 = ikArm(A, Tt, null); qs = q2[0]; qe = q2[1]; }
       else if (gs.prone > .12) { const q2 = ikArm(A, chest.worldToLocal(crawlHand(A, i)), pronePole(A)); qs = q2[0]; qe = q2[1]; }
       else if (ll >= 1) { const fl = gs.hph ? 1 : 0, fall = ll === 2 ? 1 : 0, aa = -.2 + .45 * gs.comp - 1.0 * fl - 1.1 * fall + Math.sin(tw * 7 + i * 2) * .15 * fall;
         qs = new THREE.Quaternion().setFromEuler(new THREE.Euler(aa, 0, A.s * (.5 + .5 * fl + Math.abs(gs.tilt) * .8 + .6 * fall))); qe = new THREE.Quaternion().setFromEuler(new THREE.Euler(-.55 - .5 * fl, 0, 0)); }
       else { const aa = -Math.sin(ph + (i ? Math.PI : 0)) * (.4 + .75 * gs.rn) * wk * swf; qs = new THREE.Quaternion().setFromEuler(new THREE.Euler(aa, 0, A.s * .08)); qe = new THREE.Quaternion().setFromEuler(new THREE.Euler(-.3 - .9 * gs.rn * wk - Math.max(0, aa) * .3, 0, 0)); }
       if (gs.stag > 0 && !gr && gs.prone < .5) qs = qs.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-1.3 * gs.stag / 1.4, 0, A.s * .6 * gs.stag / 1.4)));
-      const kk = Math.min(1, (gs.prone > .12 ? 18 : (gr && i === gs.arm ? 14 : 8)) * dt); A.sh.quaternion.slerp(qs, kk); A.el.quaternion.slerp(qe, kk); clampArm(A); A.fg.forEach(f => f.rotation.x = (gr && i === gs.arm) ? -1.4 : -.25);
+      const kk = Math.min(1, (gs.prone > .12 ? 18 : (gr && i === gs.arm ? 14 : (O.armT && O.armT[i] ? 12 : 8))) * dt); A.sh.quaternion.slerp(qs, kk); A.el.quaternion.slerp(qe, kk); clampArm(A); A.fg.forEach(f => f.rotation.x = (gr && i === gs.arm) ? -1.4 : -.25);
     });
     if (gs.dead) deadPose(dt);
     G.updateMatrixWorld(true);
@@ -182,6 +195,7 @@ const ONL = (() => {
   ['click', 'touchstart'].forEach(t => $$('vw').addEventListener(t, vwToggle, { passive: true }));
   addEventListener('mousedown', e => { if (!O.active || !isG() || over || isPaused || !(document.pointerLockElement || mode === 'PC')) return; if (e.target.closest && e.target.closest('button,#lobby,#resOv,#pauseOv')) return; if (e.button === 0) actGrab(); else if (e.button === 2) actCrush(); });
   addEventListener('contextmenu', e => { if (O.active) e.preventDefault(); });
+  addEventListener('wheel', e => { if (O.active && isG() && !isPaused) { O.camD = Math.max(18, Math.min(220, O.camD + Math.sign(e.deltaY) * 6)); camSave(); } }, { passive: true });
   addEventListener('keydown', e => { if (!O.active || isPaused) return;
     if (isG()) { if (e.code === 'Space') { actCrush(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); else if (e.code === 'KeyV') vwToggle(); }
     else if (O.dead && e.code === 'Tab') { O.specIdx++; e.preventDefault(); } });
@@ -194,6 +208,7 @@ const ONL = (() => {
   const TAP = [
     { el: bRun, down: bRun._down, up: bRun._up }, { el: bGrab, down: bGrab._down, up: bGrab._up },
     { el: bCrush, down: bCrush._down, up: bCrush._up }, { el: bGuard, down: bGuard._down, up: bGuard._up },
+    ...[bArmR, bArmL, bCamIn, bCamOut, bCamUp, bCamDn].map(b => ({ el: b, down: b._down, up: b._up })),
     { el: $$('pauseBtn'), down: () => togglePause() },
     { el: $$('vw'), down: () => { if (isG()) vwToggle(); else setView(!tp); } },
     ...['fire', 'rel', 'sbtn', 'gbtn'].map(id => ({ el: $$(id), down: () => synth($$(id), 'touchstart'), up: () => { synth($$(id), 'touchend'); } }))]; // 兵士用の既存ボタンは、元の処理にそのままイベントを渡す
@@ -225,7 +240,9 @@ const ONL = (() => {
   function giantStep(dt) {
     const o = GI[0]; useG(o); P.pitch = Math.max(-.9, Math.min(.5, P.pitch));
     const c = Math.cos(P.yaw), sn = Math.sin(P.yaw);
-    let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + joy.x, mz = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - joy.y; const l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
+    let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + joy.x, mz = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - joy.y; let l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
+    const hold = [!!(keys.KeyE || O.armBtn[0]), !!(keys.KeyQ || O.armBtn[1])]; // E/右腕ボタン=右腕, Q/左腕ボタン=左腕
+    if ((hold[0] || hold[1]) && !O.grab) { O.armT = hold.map(h => h ? [mx, mz] : null); mx = 0; mz = 0; l = 0; } else O.armT = null; // 横=左右, 縦=上下
     const dx = c * mx - sn * mz, dz = -sn * mx - c * mz, moving = l > .15, run = !!(keys.ShiftLeft || keys.ShiftRight || O.runBtn);
     gs.hurt = Math.max(0, gs.hurt - dt); gs.stag = Math.max(0, gs.stag - dt); Object.values(gs.parts).forEach(q => q.cooldown = Math.max(0, q.cooldown - dt));
     gs.mode = 'chase'; gs.run = run ? 5 : 0; gs.dead = 0; O.guard = Date.now() < O.guardUntil;
@@ -250,8 +267,8 @@ const ONL = (() => {
     if (fp) { const hp = headG.getWorldPosition(new THREE.Vector3()), cp = Math.cos(P.pitch), fx = -Math.sin(P.yaw) * cp, fz = -Math.cos(P.yaw) * cp, fy = Math.sin(P.pitch);
       cam.position.set(hp.x + fx * 2.5 * sc, hp.y + .8 * sc, hp.z + fz * 2.5 * sc); cam.lookAt(cam.position.x + fx * 10, cam.position.y + fy * 10, cam.position.z + fz * 10);
       if (cam.fov !== 82) { cam.fov = 82; cam.updateProjectionMatrix(); } sky.position.copy(cam.position); return; }
-    const T = new THREE.Vector3(G.position.x, 24 * sc, G.position.z), cp = Math.cos(P.pitch), dist = 72 * sc;
-    cam.position.set(T.x + Math.sin(P.yaw) * cp * dist, Math.max(4, T.y - Math.sin(P.pitch) * dist + 12 * sc), T.z + Math.cos(P.yaw) * cp * dist);
+    const T = new THREE.Vector3(G.position.x, 24 * sc, G.position.z), cp = Math.cos(P.pitch), dist = O.camD * sc;
+    cam.position.set(T.x + Math.sin(P.yaw) * cp * dist, Math.max(4, T.y - Math.sin(P.pitch) * dist + O.camH * sc), T.z + Math.cos(P.yaw) * cp * dist);
     cam.lookAt(T); if (cam.fov !== 74) { cam.fov = 74; cam.updateProjectionMatrix(); } sky.position.copy(cam.position);
   }
   function specTargets() { const t = [{ g: 1 }]; O.rem.forEach((r, id) => { if (r.mesh.visible) t.push({ id, r }); }); return t; }
@@ -332,7 +349,7 @@ const ONL = (() => {
   O.start = m => {
     $$('resOv').style.display = 'none'; $$('specBar').style.display = 'none'; GBTN.forEach(b => b.style.display = 'none');
     O.ui.forEach(([e, d]) => { e.style.display = d; }); O.ui = [];
-    Object.assign(O, { me: m.players.find(p => p.id === NET.id), snaps: [], off: null, grab: null, guardUntil: 0, stompT: 0, dead: false, giantDead: false, result: null, al: 0, specIdx: 0, cd: { grab: 0, crush: 0, guard: 0 }, napeCd: 0 }); O.clear();
+    Object.assign(O, { me: m.players.find(p => p.id === NET.id), snaps: [], off: null, armT: null, armBtn: [false, false], camBtn: { d: 0, h: 0 }, grab: null, guardUntil: 0, stompT: 0, dead: false, giantDead: false, result: null, al: 0, specIdx: 0, cd: { grab: 0, crush: 0, guard: 0 }, napeCd: 0 }); O.clear();
     NET.on('snap', onSnap); NET.on('event', onEvent); O.active = true; PREF.map = false; PREF.arrow = false;
     if (!O.me) return;
     startGame(); held.visible = false; fig.visible = true; cam.fov = 70; cam.updateProjectionMatrix();
@@ -345,7 +362,7 @@ const ONL = (() => {
     const o = GI[0]; useG(o); G.visible = true; G.position.set(0, 0, 0); gs.yaw = 0; G.rotation.y = 0; gs.dead = 0; gs.spd = 0;
     ['fire', 'rel', 'sbtn', 'spc', 'gas', 'gbtn'].forEach(id => { const e = $$(id); if (e) { O.ui.push([e, e.style.display]); e.style.display = 'none'; } });
     if (mode === 'SP') GBTN.forEach(b => b.style.display = 'block');
-    popup(mode === 'SP' ? '巨人: 左スティック移動 / 右のボタンで走る・掴む・踏みつぶし・うなじ守り' : '巨人: WASD移動 / マウスで向き / Shift走る / 左クリック掴む / 右クリック・Space踏みつぶし / Cうなじ守り', 'big');
+    popup(mode === 'SP' ? '巨人: 左スティック移動 / 右のボタンで走る・掴む・踏みつぶし・うなじ守り / 「右腕」「左腕」を押しながらスティックで腕を動かす / 右上の 拡縮上下 でカメラ調整' : '巨人: WASD移動 / マウスで向き / Shift走る / 左クリック掴む / 右クリック・Space踏みつぶし / Cうなじ守り', 'big');
   };
   const mk = id => {
     const mesh = O.FIG.clone(true); mesh.visible = true; S.add(mesh);
@@ -369,7 +386,7 @@ const ONL = (() => {
     if (O.acc >= 1 / O.SEND_HZ && !over && !O.dead) {
       O.acc = 0;
       if (giant) { const o = GI[0]; useG(o); NET.send({ t: 'state', p: [r2(G.position.x), r2(G.position.y), r2(G.position.z)], yaw: r2(gs.yaw), hy: r2(gs.yaw + headG.rotation.y), sp: r2(gs.spd || 0), run: gs.run > 0 ? 1 : 0,
-        sc: G.scale.x, hd: r2(headG.rotation.y), nh: r2(nape.getWorldPosition(V).y - G.position.y), limbs: LIMB_KEYS.map(k => gs.parts[k].severed ? 1 : 0) }); }
+        sc: G.scale.x, hd: r2(headG.rotation.y), nh: r2(nape.getWorldPosition(V).y - G.position.y), ar: O.armT ? O.armT.map(a => a ? [r2(a[0]), r2(a[1])] : null) : null, limbs: LIMB_KEYS.map(k => gs.parts[k].severed ? 1 : 0) }); }
       else NET.send({ t: 'state', p: [r2(P.pos.x), r2(P.pos.y), r2(P.pos.z)], yaw: r2(P.yaw), pitch: r2(P.pitch), v: [r2(P.vel.x), r2(P.vel.y), r2(P.vel.z)],
         w: WIRES.map(w => w.a ? aw(w.a, V).toArray().map(r2) : (w.fly ? w.fly.pos.toArray().map(r2) : null)),
         f: (P.stuck ? 1 : 0) | (P.gr ? 2 : 0) | (P.dash ? 4 : 0) | (P.slash ? 8 : 0), g: r2(P.gasAmt || 0) });
@@ -403,7 +420,7 @@ const ONL = (() => {
         LIMB_KEYS.forEach((key, li) => { if (gb.limbs[li] && !gs.parts[key].severed) applyLimb(key); });
         gs.yaw = ga.yaw + ad(gb.yaw, ga.yaw) * k; headG.rotation.y = lp(ga.hd, gb.hd, k); gs.spd = lp(ga.sp, gb.sp, k); gs.run = gb.run ? 5 : 0; gs.dead = O.giantDead ? 1 : 0; gs.mode = 'chase';
         if (legLossOf(gs) > 0) updateLegless(realDt, gs.spd > .4, gs.trait.walkSpeed); else { gs.phase += gs.spd * realDt * 1.8 / (17.4 * (.42 + .33 * gs.rn) * G.scale.x); }
-        G.position.set(lp(ga.p[0], gb.p[0], k), lp(ga.p[1], gb.p[1], k), lp(ga.p[2], gb.p[2], k)); G.rotation.y = gs.yaw; O.pose(o, realDt);
+        G.position.set(lp(ga.p[0], gb.p[0], k), lp(ga.p[1], gb.p[1], k), lp(ga.p[2], gb.p[2], k)); G.rotation.y = gs.yaw; O.armT = gb.ar || null; O.pose(o, realDt);
       }
     }
     fxStep(realDt);
@@ -411,9 +428,13 @@ const ONL = (() => {
       bCrush.textContent = c1 > 0 ? '踏みつぶし ' + c1 : '踏みつぶし'; bCrush.classList.toggle('cd', c1 > 0); bGuard.textContent = c2 > 0 ? 'うなじ守り ' + c2 : 'うなじ守り'; bGuard.classList.toggle('cd', c2 > 0); bRun.classList.toggle('on', O.runBtn); }
     // HUD とカメラ
     const cdS = t => Math.max(0, Math.ceil((t - now) / 1000));
-    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 踏みつぶし ${cdS(O.cd.crush) || '可'} ｜ うなじ守り ${cdS(O.cd.guard) || '可'}${O.guard ? '（発動中）' : ''}${mode === 'PC' ? ' ｜ 左クリック掴む / 右クリック・Space踏みつぶし / Cうなじ守り / Shift走る / V視点' : ''}`
+    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 踏みつぶし ${cdS(O.cd.crush) || '可'} ｜ うなじ守り ${cdS(O.cd.guard) || '可'}${O.guard ? '（発動中）' : ''}${mode === 'PC' ? ' ｜ 左クリック掴む / 右クリック・Space踏みつぶし / Cうなじ守り / Shift走る / V視点 / Q・E+WASDで腕 / Z・Xズーム R・F高さ' : ''}`
       : O.dead ? '観戦中（クリック/Tabで視点切替）' : `生存兵士 ${O.al}人 ｜ 巨人のうなじを背後から斬れ${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}`;
     hud.msg.textContent = msg;
+    if (giant && !isPaused) { // カメラ距離/高さ: Z/X=ズーム, R/F=高さ, ホイール=ズーム, 画面の「拡縮上下」ボタン
+      const dz = (keys.KeyX || O.camBtn.d > 0 ? 1 : 0) - (keys.KeyZ || O.camBtn.d < 0 ? 1 : 0), dh = (keys.KeyR || O.camBtn.h > 0 ? 1 : 0) - (keys.KeyF || O.camBtn.h < 0 ? 1 : 0);
+      if (dz || dh) { O.camD = Math.max(18, Math.min(220, O.camD + dz * 70 * realDt)); O.camH = Math.max(-10, Math.min(90, O.camH + dh * 35 * realDt)); O.camDirty = true; } else if (O.camDirty) { O.camDirty = false; camSave(); }
+    }
     if (giant) giantCam(); else if (O.dead && !over) specCam();
   };
   addEventListener('click', e => { if (O.dead && !over && !(e.target.closest && e.target.closest('button'))) O.specIdx++; });
