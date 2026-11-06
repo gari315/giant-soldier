@@ -153,7 +153,8 @@ function handleState(room, p, m) {
     p.st = { p: pos, yaw: num(m.yaw, 100), pitch: num(m.pitch, 4), v: vec(m.v) || [0, 0, 0], w: [vec(m.w && m.w[0]), vec(m.w && m.w[1])], f: m.f | 0, g: num(m.g, 1000) };
   } else {
     p.st = { p: pos, yaw: num(m.yaw, 100), hy: num(m.hy, 100), sp: num(m.sp, 200), run: m.run ? 1 : 0, sc: Math.max(.5, Math.min(3, num(m.sc, 10) || 1)),
-      limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), guard: 0 };
+      limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), guard: 0,
+      ar: [0, 1].map(i => (m.ar && Array.isArray(m.ar[i])) ? [num(m.ar[i][0], 1), num(m.ar[i][1], 1)] : null) }; // 腕の操作: [横,上下] (-1〜1) または null
   }
 }
 
