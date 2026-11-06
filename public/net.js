@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-05c'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-05d'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -79,6 +79,8 @@ const ONL = (() => {
 .gbt{position:fixed;z-index:4;display:none;width:78px;height:78px;border-radius:50%;font:700 13px sans-serif;line-height:1.2;background:#000a;color:#fff;border:2px solid #fff9;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .gbt.on{background:#d9822bdd;border-color:#fff}.gbt.cd{opacity:.5}
 #pauseBtn,#vw,#lockRetry{z-index:20!important}
+@media (pointer:coarse){html,body{position:fixed!important;inset:0;width:100%;height:100%;overflow:hidden!important;overscroll-behavior:none}}
+#tdbg{position:fixed;z-index:30;left:4px;top:60px;max-width:70vw;padding:4px 6px;background:#000c;color:#0f0;font:11px/1.3 monospace;white-space:pre-wrap;pointer-events:none}
 #gToast{position:fixed;z-index:8;left:50%;top:22%;transform:translateX(-50%);max-width:90vw;padding:8px 16px;border-radius:20px;background:#000b;color:#fff;font:700 15px sans-serif;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
 #resOv{display:none;position:fixed;inset:0;z-index:12;background:#000c;color:#efe6da;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:"Noto Serif JP",serif;text-align:center;padding:16px}
 #resOv h1{font-size:34px;margin:0}#resOv p{margin:0;opacity:.85}#resOv .r{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -87,8 +89,9 @@ const ONL = (() => {
   document.body.insertAdjacentHTML('beforeend', '<div id="resOv"><h1 id="resT"></h1><p id="resS"></p><div class="r" id="resB"></div></div><div id="specBar"><span id="specTxt"></span><button class="b" id="specBtn">次へ</button></div>');
   const mkBtn = (id, label, right, bottom, fn) => { const b = document.createElement('button'); b.id = id; b.className = 'gbt'; b.textContent = label; b.style.right = right + 'px'; b.style.bottom = bottom + 'px';
     const h = v => e => { e.preventDefault(); e.stopPropagation(); fn(v); };
-    b.addEventListener('pointerdown', e => { b.classList.add('on'); h(true)(e); }); ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => b.addEventListener(t, e => { b.classList.remove('on'); h(false)(e); }));
+    b.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; b.classList.add('on'); h(true)(e); }); ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => b.addEventListener(t, e => { if (e.pointerType === 'touch') return; b.classList.remove('on'); h(false)(e); }));
     b.addEventListener('contextmenu', e => e.preventDefault());
+    b._down = () => { b.classList.add('on'); fn(true); }; b._up = () => { b.classList.remove('on'); fn(false); };
     document.body.appendChild(b); return b; };
   const bRun = mkBtn('gRun', '走る', 18, 30, v => { O.runBtn = v; });
   const bGrab = mkBtn('gGrab', '掴む', 110, 30, v => { if (v) actGrab(); });
@@ -183,6 +186,31 @@ const ONL = (() => {
     if (isG()) { if (e.code === 'Space') { actCrush(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); else if (e.code === 'KeyV') vwToggle(); }
     else if (O.dead && e.code === 'Tab') { O.specIdx++; e.preventDefault(); } });
   $$('specBtn').onclick = () => { O.specIdx++; };
+
+  // ---- スマホ: タップ座標と「見えている矩形」で当たり判定する ----
+  // ブラウザのDOM当たり判定が、上下バーの出入りなどで見た目とずれる環境があるため、
+  // オンライン中のスマホでは、ボタンをタップ座標と矩形の比較で判定する（実際に見えている位置が基準）。
+  const synth = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
+  const TAP = [
+    { el: bRun, down: bRun._down, up: bRun._up }, { el: bGrab, down: bGrab._down, up: bGrab._up },
+    { el: bCrush, down: bCrush._down, up: bCrush._up }, { el: bGuard, down: bGuard._down, up: bGuard._up },
+    { el: $$('pauseBtn'), down: () => togglePause() },
+    { el: $$('vw'), down: () => { if (isG()) vwToggle(); else setView(!tp); } },
+    ...['fire', 'rel', 'sbtn', 'gbtn'].map(id => ({ el: $$(id), down: () => synth($$(id), 'touchstart'), up: () => { synth($$(id), 'touchend'); } }))]; // 兵士用の既存ボタンは、元の処理にそのままイベントを渡す
+  const shown = e => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden'; };
+  const hitTap = (x, y) => { let best = null, bd = 1e9; for (const t of TAP) { if (!t.el || !shown(t.el)) continue; const r = t.el.getBoundingClientRect(); if (!r.width) continue;
+      if (x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) { const d = Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2); if (d < bd) { bd = d; best = t; } } } return best; };
+  const act = new Map(), dbg = /[?&]dbg/.test(location.search) ? document.body.appendChild(Object.assign(document.createElement('div'), { id: 'tdbg' })) : null;
+  addEventListener('touchstart', e => {
+    if (!O.active) return; let used = false;
+    for (const t of e.changedTouches) { const hit = hitTap(t.clientX, t.clientY);
+      if (dbg) { const d = document.elementFromPoint(t.clientX, t.clientY), vv = window.visualViewport; dbg.textContent = `touch ${t.clientX | 0},${t.clientY | 0}  inner ${innerWidth}x${innerHeight}` + (vv ? `  vv ${vv.width | 0}x${vv.height | 0} off ${vv.offsetLeft | 0},${vv.offsetTop | 0} s${vv.scale.toFixed(2)}` : '') + `\nDOM:${d && (d.id || d.tagName)}  自前:${hit ? (hit.el.id || '?') : '-'}`; }
+      if (hit) { act.set(t.identifier, hit); if (hit.el.classList) hit.el.classList.add('on'); hit.down(); used = true; } }
+    if (used) { e.preventDefault(); e.stopImmediatePropagation(); } // 元の視点/スティック処理にはこのタッチを渡さない
+  }, { capture: true, passive: false });
+  const tapEnd = e => { for (const t of e.changedTouches) { const hit = act.get(t.identifier); if (hit) { act.delete(t.identifier); if (hit.el.classList) hit.el.classList.remove('on'); if (hit.up) hit.up(); } } };
+  addEventListener('touchend', tapEnd, true); addEventListener('touchcancel', tapEnd, true);
+  addEventListener('gesturestart', e => { if (O.active) e.preventDefault(); }); // iOS: ピンチ拡大でレイアウトがずれるのを防ぐ
 
   // 視覚効果: 踏みつぶしの衝撃波 / うなじ守りのバリア
   O.fx = []; let shield = null;
