@@ -11,8 +11,8 @@ const C = {
   GRACE_MS: 30000,        // 切断後に同じ席へ復帰できる時間
   MAX_SOLDIERS: 4, MAX_PLAYERS: 5,
   GRAB_MS: 2500,          // 掴んでから食べるまで
-  GRAB_REACH: 12,         // 掴み距離(水平) = REACH*スケール + SLACK
-  KICK_R: 16, KICK_H: 22, KICK_HIT: 450, KICK_LOCK: 900, // 蹴り: 全方向（360°）・半径(スケール倍)・届く高さ・発生までの時間・連打できない最短間隔(モーション分)
+  GRAB_HAND_R: 5,         // 掴み: 巨人の手（クライアント申告の手の位置）と兵士の距離 = R*スケール + SLACK。手が触れれば向き・状況を問わず掴める
+  KICK_R: 16, KICK_H: 22, KICK_HIT: 1130, KICK_LOCK: 1800, // 蹴り: 全方向（360°）・半径(スケール倍)・届く高さ・発生までの時間・連打できない最短間隔(モーション分)
   GUARD_MS: 1500, GUARD_CD: 0,
   ROAR_CD: 14000, ROAR_MS: 4000,                           // 咆哮: 全兵士の位置が巨人に見える時間
   GUARD_TAIL: 250,       // 守り終了後も、遅延ぶんだけうなじ申告を拒否する
@@ -124,13 +124,14 @@ function handleEvent(room, p, m) {
   }
   if (p.role !== 'giant' || !giantOK(room, p)) return;
   const st = p.st, sc = st.sc, t = now();
-  if (m.k === 'grab') {
+  if (m.k === 'grab') { // 手が触れた兵士は、いつでも掴める（向き・距離の前方条件・うなじ守り中でも可）。判定は申告された手の位置とのずれで検証
     const tg = room.players.get(m.id);
-    if (room.grab || !tg || tg.role !== 'soldier' || !tg.alive || !tg.st || st.limbs[0] && st.limbs[1] || now() < room.guardUntil) return;
-    const fx = Math.sin(st.yaw), fz = Math.cos(st.yaw), dx = tg.st.p[0] - st.p[0], dz = tg.st.p[2] - st.p[2];
-    if (Math.hypot(dx, dz) > C.GRAB_REACH * sc + C.SLACK || dx * fx + dz * fz <= 0) return; // 前方のみ
+    if (room.grab || !tg || tg.role !== 'soldier' || !tg.alive || !tg.st || !st.hnd) return;
+    let arm = -1, bd = 1e9;
+    st.hnd.forEach((h, i) => { if (!h) return; const d = Math.hypot(h[0] - tg.st.p[0], h[1] - (tg.st.p[1] - .6), h[2] - tg.st.p[2]); if (d < bd) { bd = d; arm = i; } });
+    if (arm < 0 || bd > C.GRAB_HAND_R * sc + C.SLACK) return;
     room.grab = { target: tg.id, until: t + C.GRAB_MS };
-    bcast(room, { t: 'event', k: 'grab', id: tg.id });
+    bcast(room, { t: 'event', k: 'grab', id: tg.id, arm });
   } else if (m.k === 'release') {
     if (room.grab) { bcast(room, { t: 'event', k: 'release', id: room.grab.target }); room.grab = null; }
   } else if (m.k === 'kick') { // 蹴り: 発動から KICK_HIT 後に、周囲（全方向）の兵士をまとめて脱落。脚を失うと蹴れない。クールダウンなし（モーション中の連打のみ不可）
@@ -157,7 +158,7 @@ function handleState(room, p, m) {
     p.st = { p: pos, yaw: num(m.yaw, 100), pitch: num(m.pitch, 4), v: vec(m.v) || [0, 0, 0], w: [vec(m.w && m.w[0]), vec(m.w && m.w[1])], f: m.f | 0, g: num(m.g, 1000) };
   } else {
     p.st = { p: pos, yaw: num(m.yaw, 100), hy: num(m.hy, 100), sp: num(m.sp, 200), run: m.run ? 1 : 0, sc: Math.max(.5, Math.min(3, num(m.sc, 10) || 1)),
-      limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), guard: 0,
+      limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), cq: m.cq ? 1 : 0, hnd: [0, 1].map(i => vec(m.hnd && m.hnd[i])), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), guard: 0,
       ar: [0, 1].map(i => (m.ar && Array.isArray(m.ar[i])) ? [num(m.ar[i][0], 1), num(m.ar[i][1], 1)] : null) }; // 腕の操作: [横,上下] (-1〜1) または null
   }
 }
