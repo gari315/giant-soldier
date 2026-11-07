@@ -41,6 +41,10 @@ button.b.sm{padding:4px 14px;font-size:20px}
 #setOv .row{justify-content:center;flex-wrap:wrap}
 #ov h1,#pauseOv h1{font-size:clamp(34px,9vw,60px);margin:0;letter-spacing:.08em;font-weight:900}
 #ov p,#pauseOv p{max-width:420px;margin:0;line-height:1.7;font-size:14px;opacity:.85}
+#ov,#pauseOv,#lobby{overflow-y:auto;-webkit-overflow-scrolling:touch;justify-content:flex-start}
+#ov{touch-action:pan-y}#ov>:first-child,#pauseOv>:first-child,#lobby>:first-child{margin-top:auto}#ov>:last-child,#pauseOv>:last-child,#lobby>:last-child{margin-bottom:auto}
+#ov button.b{touch-action:manipulation}
+@media (max-height:520px){#ov,#pauseOv{gap:8px;padding:12px 16px}#ov h1,#pauseOv h1{font-size:clamp(24px,8vh,38px)}#ov p{font-size:12px;line-height:1.45}#ov button.b{padding:8px 16px;font-size:14px}#ov button.go{padding:9px 28px}#lobby h1{font-size:18px}}
 .row{display:flex;gap:10px}
 button.b{font:700 16px "Noto Serif JP",serif;color:var(--fg);background:transparent;border:2px solid #efe6da66;padding:12px 22px;border-radius:4px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 button.b.on{background:var(--ac);border-color:var(--ac)}
@@ -750,7 +754,7 @@ function updSpears(dt){spCd-=dt;
    if(p.y<.3||Math.max(Math.abs(p.x),Math.abs(p.z))>WALL_IN){hit=true;boom(p,2);break;}
    for(const o of GI){if(o.gs.dead)continue;const np=o.nape.getWorldPosition(new THREE.Vector3());
     if(p.distanceTo(np)<3.4*Math.max(.85,o.G.scale.x)&&napeBehind(o,p)){const pv=P.vel.clone();useG(o);killGiant();P.vel.copy(pv);boom(np,7);hit=true;break;}
-    for(const g of o.GS){if(g.partKey&&o.gs.parts[g.partKey].severed)continue;const c=g[0].localToWorld(new THREE.Vector3(g[1],g[2],g[3]));if(p.distanceTo(c)<g[4]*o.G.scale.x){if(g.partKey)severLimb(o,g.partKey,p.clone(),true);else{addWound(o,g,p.clone(),c);damageGiant(o,30);}o.gs.hurt=18;o.gs.stag=Math.max(o.gs.stag,1.4);o.gs.windup=0;o.gs.recover=Math.max(o.gs.recover,.8);boom(p,5);hit=true;break;}}
+    for(const g of o.GS){if(!g.partKey&&window.ONL&&ONL.active)continue;if(g.partKey&&o.gs.parts[g.partKey].severed)continue;const c=g[0].localToWorld(new THREE.Vector3(g[1],g[2],g[3]));if(p.distanceTo(c)<g[4]*o.G.scale.x){if(g.partKey)severLimb(o,g.partKey,p.clone(),true);else{addWound(o,g,p.clone(),c);damageGiant(o,30);}o.gs.hurt=18;o.gs.stag=Math.max(o.gs.stag,1.4);o.gs.windup=0;o.gs.recover=Math.max(o.gs.recover,.8);boom(p,5);hit=true;break;}}
     if(hit)break;}
    if(hit)break;
    buildingList.forEach((b,bi)=>{if(hit||b.destroyed||b.collapsing)return;const d=Math.max(Math.abs(p.x-b.px),Math.abs(p.z-b.pz)),rw=b.w*.559;
@@ -1149,7 +1153,8 @@ function addWound(o,g,pt,c){const par=g[0],lp=par.worldToLocal(pt.clone()),lc=pa
  const m=new THREE.Mesh(woundGeo,woundMat);m.scale.set(1.6+Math.random()*2.2,1+Math.random()*.8,1);m.position.copy(lp).addScaledVector(n,.06);m.quaternion.setFromUnitVectors(_zAxis,n);m.rotateZ(Math.random()*6.28);
  par.add(m);(o.wounds=o.wounds||[]).push(m);if(o.wounds.length>36){const old=o.wounds.shift();if(old.parent)old.parent.remove(old);}}
 function cutBody(o,g,c,pp){
- const st=o.gs;if(st.dead)return;const dash=!!P.dash&&P.vel.length()>=DASH_MIN_SPEED;
+ const st=o.gs;if(st.dead)return;if(!g.partKey&&window.ONL&&ONL.active)return; // オンライン: 四肢以外は斬れない
+const dash=!!P.dash&&P.vel.length()>=DASH_MIN_SPEED;
  if(g.partKey&&dash)return;
  const dir=pp.clone().sub(c),dl=dir.length()||1;dir.multiplyScalar(1/dl);const pt=c.clone().addScaledVector(dir,g[4]*o.G.scale.x*.95);
  addWound(o,g,pt,c);
@@ -1847,7 +1852,7 @@ const dx=P.pos.x-G.position.x,dz=P.pos.z-G.position.z,dist=Math.hypot(dx,dz);
     {const ax=Math.abs(P.pos.x),az=Math.abs(P.pos.z),mx=Math.max(ax,az);if(mx>WALL_IN-.5&&mx<WALL_IN+WALL_T&&P.pos.y>=WALL_H-.5&&P.pos.y<=WALL_H+2.3&&P.vel.y<=0){P.pos.y=WALL_H+1.7;P.vel.y=0;P.gr=true;}} // 外壁の上面に立つ
     // nape slash
     const nw=att.find(w=>w.a.nape);
-    if(nw&&P.pos.distanceTo(aw(nw.a,V))<5*Math.max(.85,nw.a.gi.G.scale.x)&&napeBehind(nw.a.gi,P.pos)){P.slash=true;P.sg=nw.a.gi;P.slashT=0;P.sw2=false;triggerSwing(2);sfx('chop',nw.a.gi.G.position,2,.12);releaseWires();P.vel.set(0,0,0);spark(aw(nw.a,V),0xffffff);}
+    if(nw&&P.pos.distanceTo(aw(nw.a,V))<5*Math.max(.85,nw.a.gi.G.scale.x)&&napeBehind(nw.a.gi,P.pos)&&!(window.ONL&&ONL.active&&Date.now()<ONL.guardUntil)){P.slash=true;P.sg=nw.a.gi;P.slashT=0;P.sw2=false;triggerSwing(2);sfx('chop',nw.a.gi.G.position,2,.12);releaseWires();P.vel.set(0,0,0);spark(aw(nw.a,V),0xffffff);}
     else if(nw&&P.pos.distanceTo(aw(nw.a,V))<5*Math.max(.85,nw.a.gi.G.scale.x)){releaseWires();spark(P.pos.clone(),0x9a9a9a);P.ns=.3;} // 正面・側面からは斬れない
     
     // buildings: 屋根の当たり判定（水平面上は最初に戻す：halfW = b.w * 0.5、高さ判定は維持）
