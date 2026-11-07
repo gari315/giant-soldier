@@ -1147,13 +1147,14 @@ function segmentDistanceSq(p1,q1,p2,q2){
 }
 // ---- 巨人の体: 触れたらどこでも斬れる(跳ね飛ばされない)。傷跡と血が残り、傷が積み重なると(体力0で)倒れる。四肢の切断はダッシュの通過だけ ----
 const woundMat=new THREE.MeshBasicMaterial({color:0x7a0e0e,transparent:true,opacity:.92,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,side:THREE.DoubleSide}),woundGeo=new THREE.PlaneGeometry(1,.16),_zAxis=new THREE.Vector3(0,0,1);
-function damageGiant(o,amt){const st=o.gs;if(st.dead)return;st.hp-=amt;if(st.hp<=0){st.hpKill=true;const pv=P.vel.clone();useG(o);killGiant();P.vel.copy(pv);}}
+function damageGiant(o,amt){const st=o.gs;if(st.dead)return;if(window.ONL&&ONL.active)return; // オンライン: 巨人の体力は使わない（勝敗はうなじ斬りのみ）
+ st.hp-=amt;if(st.hp<=0){st.hpKill=true;const pv=P.vel.clone();useG(o);killGiant();P.vel.copy(pv);}}
 function showBodyHp(o){const st=o.gs;$('limbTitle').textContent=st.trait.name+'　体の傷';$('limbFill').style.width=Math.max(0,st.hp/st.hpMax*100)+'%';$('limbNote').textContent='体力 '+Math.max(0,Math.round(st.hp))+' / '+st.hpMax;const el=$('limbStatus');el.style.display='block';el.style.opacity='1';limbHudUntil=performance.now()+2200;}
 function addWound(o,g,pt,c){const par=g[0],lp=par.worldToLocal(pt.clone()),lc=par.worldToLocal(c.clone()),n=lp.clone().sub(lc).normalize();
  const m=new THREE.Mesh(woundGeo,woundMat);m.scale.set(1.6+Math.random()*2.2,1+Math.random()*.8,1);m.position.copy(lp).addScaledVector(n,.06);m.quaternion.setFromUnitVectors(_zAxis,n);m.rotateZ(Math.random()*6.28);
  par.add(m);(o.wounds=o.wounds||[]).push(m);if(o.wounds.length>36){const old=o.wounds.shift();if(old.parent)old.parent.remove(old);}}
 function cutBody(o,g,c,pp){
- const st=o.gs;if(st.dead)return;if(!g.partKey&&window.ONL&&ONL.active)return; // オンライン: 四肢以外は斬れない
+ const st=o.gs;if(st.dead)return;if(window.ONL&&ONL.active)return; // オンライン: 体への接触斬りは無効（攻撃はうなじ・四肢のみ）
 const dash=!!P.dash&&P.vel.length()>=DASH_MIN_SPEED;
  if(g.partKey&&dash)return;
  const dir=pp.clone().sub(c),dl=dir.length()||1;dir.multiplyScalar(1/dl);const pt=c.clone().addScaledVector(dir,g[4]*o.G.scale.x*.95);
