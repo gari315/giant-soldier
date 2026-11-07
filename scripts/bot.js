@@ -51,12 +51,16 @@ async function selftest() {
   A.send({ t: 'start' }); ok(!!(await A.until(m => m.t === 'start')), 'ホストが開始（巨人1+兵士4）');
 
   // --- 掴み ---
-  G.giant([0, 0, 0]); A.soldier([0, 3, 80]); B.soldier([0, 3, -10]); C.soldier([0, 3, 10]); D.soldier([200, 3, 200]); await sleep(150);
-  G.send({ t: 'event', k: 'grab', id: A.id }); await sleep(100); ok(!G.q.some(m => m.k === 'grab'), '遠すぎる掴みは却下');
-  G.send({ t: 'event', k: 'grab', id: B.id }); await sleep(100); ok(!G.q.some(m => m.k === 'grab'), '背後の掴みは却下（前方のみ）');
-  G.send({ t: 'event', k: 'grab', id: C.id }); ok(!!(await G.until(m => m.k === 'grab' && m.id === C.id)), '前方の近い兵士は掴める');
+  G.giant([0, 0, 0], { hnd: [[0, 3, 9], null] }); A.soldier([0, 3, 80]); B.soldier([0, 3, -10]); C.soldier([0, 3, 10]); D.soldier([200, 3, 200]); await sleep(150);
+  G.send({ t: 'event', k: 'grab', id: A.id }); await sleep(100); ok(!G.q.some(m => m.k === 'grab'), '手から遠い掴みは却下');
+  G.send({ t: 'event', k: 'grab', id: B.id }); await sleep(100); ok(!G.q.some(m => m.k === 'grab'), '手が触れていない兵士の掴みは却下');
+  G.send({ t: 'event', k: 'grab', id: C.id }); ok(!!(await G.until(m => m.k === 'grab' && m.id === C.id && m.arm === 0)), '手が触れた兵士は掴める（どちらの手か通知）');
   const t0 = Date.now(); const eat = await G.until(m => m.k === 'dead' && m.id === C.id, 4000);
   ok(eat?.by === 'eat' && Date.now() - t0 > 2200 && Date.now() - t0 < 3200, `約2.5秒後に食べられて脱落 (${Date.now() - t0}ms)`);
+
+  D.soldier([0, 3, -12]); G.giant([0, 0, 0], { hnd: [[0, 3, -11], null] }); await sleep(150); G.q.length = 0;
+  G.send({ t: 'event', k: 'grab', id: D.id }); ok(!!(await G.until(m => m.k === 'grab' && m.id === D.id)), '手が触れれば背後でも掴める'); G.send({ t: 'event', k: 'release' }); await G.until(m => m.k === 'release');
+  G.giant([0, 0, 0]);
 
   // --- 蹴り（全方向・空中でも低ければ当たる・高い所と遠くは無事。クールダウンなし、モーション中の連打のみ不可）---
   A.soldier([5, 45, 0]); B.soldier([-6, 10, -8]); D.soldier([30, 1, 0]); await sleep(150);
