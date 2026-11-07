@@ -74,8 +74,8 @@ async function selftest() {
   A.soldier([0, 33, 5]); await sleep(100); A.send({ t: 'event', k: 'nape' }); await sleep(100); ok(!A.q.some(m => m.t === 'result'), 'うなじ: 正面からの申告は却下');
   G.send({ t: 'event', k: 'guard' }); await G.until(m => m.k === 'guard');
   A.soldier([0, 33, -5]); await sleep(100); A.send({ t: 'event', k: 'nape' }); await sleep(100); ok(!A.q.some(m => m.t === 'result'), 'うなじ守り中は斬れない');
-  await sleep(1500); A.send({ t: 'event', k: 'nape' });
-  const res = await A.until(m => m.t === 'result'); ok(res?.winner === 'soldiers' && res.reason === 'nape', '背後・至近距離のうなじ申告で兵士の勝ち');
+  await sleep(1900); A.send({ t: 'event', k: 'nape' }); // 守り1.5秒 + 余韻0.25秒のあと
+  const res = await A.until(m => m.t === 'result'); ok(res?.winner === 'soldiers' && res.reason === 'nape', '背後・至近距離のうなじ申告で兵士の勝ち（確定は0.25秒後）');
 
   // --- 再戦（役割交代あり）・再接続・巨人退出 ---
   A.send({ t: 'again', swap: true }); const st = await A.until(m => m.t === 'start');
