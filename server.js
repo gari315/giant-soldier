@@ -14,6 +14,8 @@ const C = {
   GRAB_REACH: 12,         // 掴み距離(水平) = REACH*スケール + SLACK
   CRUSH_R: 8, CRUSH_H: 4, CRUSH_CD: 4000,
   GUARD_MS: 1500, GUARD_CD: 10000,
+  GUARD_TAIL: 250,       // 守り終了後も、遅延ぶんだけうなじ申告を拒否する
+  NAPE_DELAY: 250,       // うなじ申告の確定を遅らせる時間。この間に守りが発動したら申告は取り消し（通信遅延で守りが負けないように）
   NAPE_H: 33, NAPE_R: 5,  // うなじの高さ/半径(スケール倍) ※実機で既存モデルに合わせて調整
   SLACK: 4,               // 遅延ぶんの許容距離
   MAP: 340                // 座標クランプ（外壁の内側 ±330 + 余裕）
@@ -61,7 +63,7 @@ function addPlayer(room, name, ws) {
   return p;
 }
 function startMatch(room) {
-  room.phase = 'playing'; room.grab = null; room.crushReady = 0; room.guardUntil = 0; room.guardReady = 0; room.collapsed = new Set(); room.limbs = new Set(); room.t0 = now();
+  room.phase = 'playing'; room.grab = null; room.crushReady = 0; room.guardUntil = 0; room.guardReady = 0; room.napePending = null; room.collapsed = new Set(); room.limbs = new Set(); room.t0 = now();
   let i = 0;
   for (const p of room.players.values()) { p.alive = true; p.st = null; p.idx = p.role === 'soldier' ? i++ : 0; }
   bcast(room, { t: 'start', seed: crypto.randomInt(1e9), players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, role: p.role, idx: p.idx })) });
@@ -69,7 +71,7 @@ function startMatch(room) {
 }
 function endMatch(room, winner, reason) {
   if (room.phase !== 'playing') return;
-  room.phase = 'result'; room.grab = null;
+  room.phase = 'result'; room.grab = null; room.napePending = null;
   bcast(room, { t: 'result', winner, reason, secs: Math.round((now() - room.t0) / 1000) });
   roster(room);
 }
@@ -100,7 +102,7 @@ function giantOK(room, g) { return room.phase === 'playing' && g.alive !== false
 const LIMBS = ['leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
 const h2 = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 function validNape(room, s, g) {
-  if (!s.st || !g.st || !s.alive || now() < room.guardUntil) return false;
+  if (!s.st || !g.st || !s.alive || now() < room.guardUntil + C.GUARD_TAIL) return false;
   const sc = g.st.sc, nh = g.st.nh > 0 ? g.st.nh : C.NAPE_H * sc, nape = [g.st.p[0], g.st.p[1] + nh, g.st.p[2]]; // nh=巨人クライアントが実モデルから計測したうなじの高さ
   const d = Math.hypot(s.st.p[0] - nape[0], s.st.p[1] - nape[1], s.st.p[2] - nape[2]);
   if (d > C.NAPE_R * sc + C.SLACK) return false;
@@ -111,7 +113,7 @@ function handleEvent(room, p, m) {
   if (room.phase !== 'playing') return;
   const g = giantOf(room);
   if (m.k === 'nape' && p.role === 'soldier') {
-    if (validNape(room, p, g)) { bcast(room, { t: 'event', k: 'nape', id: p.id }); endMatch(room, 'soldiers', 'nape'); }
+    if (validNape(room, p, g) && !room.napePending) room.napePending = { id: p.id, at: now() + C.NAPE_DELAY }; // 確定はループで（その間に守りが入れば取り消し）
     return;
   }
   if (m.k === 'limb' && p.role === 'soldier') { // 四肢の切断: 巨人の近くの生存兵士の申告のみ、1部位1回だけ全員へ
@@ -138,7 +140,7 @@ function handleEvent(room, p, m) {
     victims.forEach(id => kill(room, room.players.get(id), 'crush'));
   } else if (m.k === 'guard') {
     if (t < room.guardReady) return;
-    room.guardUntil = t + C.GUARD_MS; room.guardReady = t + C.GUARD_CD;
+    room.guardUntil = t + C.GUARD_MS; room.guardReady = t + C.GUARD_CD; room.napePending = null; // 守り優先: 保留中のうなじ申告は無効
     bcast(room, { t: 'event', k: 'guard', ms: C.GUARD_MS });
   } else if (m.k === 'collapse') {
     const b = m.b | 0; if (b < 0 || b > 9999 || room.collapsed.has(b)) return;
@@ -234,6 +236,8 @@ setInterval(() => {
     if (!rooms.has(room.code) || room.phase !== 'playing') continue;
     if (room.grab && t >= room.grab.until) { const v = room.players.get(room.grab.target); room.grab = null; if (v) { bcast(room, { t: 'event', k: 'eat', id: v.id }); kill(room, v, 'eat'); } }
     if (room.phase !== 'playing') continue;
+    const np = room.napePending;
+    if (np && t >= np.at) { room.napePending = null; const s = room.players.get(np.id), gg = giantOf(room); if (s && gg && validNape(room, s, gg)) { bcast(room, { t: 'event', k: 'nape', id: s.id }); endMatch(room, 'soldiers', 'nape'); continue; } }
     const g = giantOf(room);
     bcast(room, { t: 'snap', ts: t, al: soldiersOf(room).filter(x => x.alive).length,
       s: soldiersOf(room).filter(p => p.st).map(p => ({ id: p.id, a: p.alive ? 1 : 0, c: p.connected ? 1 : 0, ...p.st })),
