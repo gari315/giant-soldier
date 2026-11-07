@@ -58,17 +58,13 @@ async function selftest() {
   const t0 = Date.now(); const eat = await G.until(m => m.k === 'dead' && m.id === C.id, 4000);
   ok(eat?.by === 'eat' && Date.now() - t0 > 2200 && Date.now() - t0 < 3200, `約2.5秒後に食べられて脱落 (${Date.now() - t0}ms)`);
 
-  // --- 踏みつぶし（A=遠い空中でない地上(80)、B=背後の地上近く）---
-  A.soldier([5, 12, 0]); B.soldier([5, 1, 0]); D.soldier([30, 1, 0]); await sleep(150);
-  G.send({ t: 'event', k: 'crush' }); const cr = await G.until(m => m.k === 'crush');
-  ok(cr && cr.victims.length === 1 && cr.victims[0] === B.id, '踏みつぶし: 範囲内の地上のみ脱落（空中・範囲外は無事）');
-  G.send({ t: 'event', k: 'crush' }); await sleep(150); ok(!G.q.some(m => m.k === 'crush'), '踏みつぶしのクールダウン中は却下');
-
-  // --- 薙ぎ払い（前方の半円内なら空中の兵士にも当たる / クールダウンあり）と咆哮 ---
-  A.soldier([0, 15, 12]); D.soldier([40, 1, 0]); await sleep(150);
-  G.send({ t: 'event', k: 'sweep' }); const sw = await G.until(m => m.k === 'swept', 2000);
-  ok(sw && sw.ids.includes(A.id) && !sw.ids.includes(D.id), '薙ぎ払い: 前方・空中の兵士に当たり、遠い兵士には当たらない');
-  G.q = G.q.filter(m => m.k !== 'sweep'); G.send({ t: 'event', k: 'sweep' }); await sleep(600); ok(!G.q.some(m => m.k === 'sweep'), '薙ぎ払いのクールダウン中は却下');
+  // --- 蹴り（全方向・空中でも低ければ当たる・高い所と遠くは無事。クールダウンなし、モーション中の連打のみ不可）---
+  A.soldier([5, 45, 0]); B.soldier([-6, 10, -8]); D.soldier([30, 1, 0]); await sleep(150);
+  G.send({ t: 'event', k: 'kick' }); const cr = await G.until(m => m.k === 'kicked');
+  ok(cr && cr.victims.length === 1 && cr.victims[0] === B.id, '蹴り: 背後を含む周囲の兵士が脱落（高い所・範囲外は無事）');
+  G.q = G.q.filter(m => m.k !== 'kick'); G.send({ t: 'event', k: 'kick' }); await sleep(150); ok(!G.q.some(m => m.k === 'kick'), '蹴りのモーション中は連打できない');
+  await sleep(900);
+  // --- 咆哮（クールダウンあり）---
   G.send({ t: 'event', k: 'roar' }); ok(!!(await A.until(m => m.k === 'roar', 1000)), '咆哮は全員に配信');
   A.q = A.q.filter(m => m.k !== 'roar'); G.send({ t: 'event', k: 'roar' }); await sleep(150); ok(!A.q.some(m => m.k === 'roar'), '咆哮のクールダウン中は却下');
   A.soldier([0, 15, -12]); await sleep(100); G.q.length = 0;
