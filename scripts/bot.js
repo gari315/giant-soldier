@@ -64,6 +64,15 @@ async function selftest() {
   ok(cr && cr.victims.length === 1 && cr.victims[0] === B.id, '踏みつぶし: 範囲内の地上のみ脱落（空中・範囲外は無事）');
   G.send({ t: 'event', k: 'crush' }); await sleep(150); ok(!G.q.some(m => m.k === 'crush'), '踏みつぶしのクールダウン中は却下');
 
+  // --- 薙ぎ払い（前方の半円内なら空中の兵士にも当たる / クールダウンあり）と咆哮 ---
+  A.soldier([0, 15, 12]); D.soldier([40, 1, 0]); await sleep(150);
+  G.send({ t: 'event', k: 'sweep' }); const sw = await G.until(m => m.k === 'swept', 2000);
+  ok(sw && sw.ids.includes(A.id) && !sw.ids.includes(D.id), '薙ぎ払い: 前方・空中の兵士に当たり、遠い兵士には当たらない');
+  G.q = G.q.filter(m => m.k !== 'sweep'); G.send({ t: 'event', k: 'sweep' }); await sleep(600); ok(!G.q.some(m => m.k === 'sweep'), '薙ぎ払いのクールダウン中は却下');
+  G.send({ t: 'event', k: 'roar' }); ok(!!(await A.until(m => m.k === 'roar', 1000)), '咆哮は全員に配信');
+  A.q = A.q.filter(m => m.k !== 'roar'); G.send({ t: 'event', k: 'roar' }); await sleep(150); ok(!A.q.some(m => m.k === 'roar'), '咆哮のクールダウン中は却下');
+  A.soldier([0, 15, -12]); await sleep(100); G.q.length = 0;
+
   // --- 四肢の切断（巨人の近くの兵士のみ、1部位1回）---
   D.send({ t: 'event', k: 'limb', key: 'rightArm' }); await sleep(100); ok(!G.q.some(m => m.k === 'limb'), '切断: 遠い兵士の申告は却下');
   A.send({ t: 'event', k: 'limb', key: 'leftArm' }); ok((await G.until(m => m.k === 'limb' && m.key === 'leftArm')) !== null, '切断: 近い兵士の申告は全員に配信');
