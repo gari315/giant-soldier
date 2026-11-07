@@ -12,9 +12,8 @@ const C = {
   MAX_SOLDIERS: 4, MAX_PLAYERS: 5,
   GRAB_MS: 2500,          // 掴んでから食べるまで
   GRAB_REACH: 12,         // 掴み距離(水平) = REACH*スケール + SLACK
-  CRUSH_R: 8, CRUSH_H: 4, CRUSH_CD: 4000,
-  GUARD_MS: 1500, GUARD_CD: 10000,
-  SWEEP_R: 22, SWEEP_H: 40, SWEEP_CD: 6000, SWEEP_HIT: 350, // 薙ぎ払い: 半径(スケール倍)・届く高さ(空中の兵士にも当たる)・クールダウン・発生までの時間
+  KICK_R: 16, KICK_H: 22, KICK_HIT: 450, KICK_LOCK: 900, // 蹴り: 全方向（360°）・半径(スケール倍)・届く高さ・発生までの時間・連打できない最短間隔(モーション分)
+  GUARD_MS: 1500, GUARD_CD: 0,
   ROAR_CD: 14000, ROAR_MS: 4000,                           // 咆哮: 全兵士の位置が巨人に見える時間
   GUARD_TAIL: 250,       // 守り終了後も、遅延ぶんだけうなじ申告を拒否する
   NAPE_DELAY: 250,       // うなじ申告の確定を遅らせる時間。この間に守りが発動したら申告は取り消し（通信遅延で守りが負けないように）
@@ -65,7 +64,7 @@ function addPlayer(room, name, ws) {
   return p;
 }
 function startMatch(room) {
-  room.phase = 'playing'; room.grab = null; room.crushReady = 0; room.guardUntil = 0; room.guardReady = 0; room.napePending = null; room.sweepReady = 0; room.sweepAt = 0; room.roarReady = 0; room.collapsed = new Set(); room.limbs = new Set(); room.t0 = now();
+  room.phase = 'playing'; room.grab = null; room.kickAt = 0; room.kickLock = 0; room.guardUntil = 0; room.guardReady = 0; room.napePending = null; room.roarReady = 0; room.collapsed = new Set(); room.limbs = new Set(); room.t0 = now();
   let i = 0;
   for (const p of room.players.values()) { p.alive = true; p.st = null; p.idx = p.role === 'soldier' ? i++ : 0; }
   bcast(room, { t: 'start', seed: crypto.randomInt(1e9), players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, role: p.role, idx: p.idx })) });
@@ -73,7 +72,7 @@ function startMatch(room) {
 }
 function endMatch(room, winner, reason) {
   if (room.phase !== 'playing') return;
-  room.phase = 'result'; room.grab = null; room.napePending = null; room.sweepAt = 0;
+  room.phase = 'result'; room.grab = null; room.napePending = null; room.kickAt = 0;
   bcast(room, { t: 'result', winner, reason, secs: Math.round((now() - room.t0) / 1000) });
   roster(room);
 }
@@ -134,20 +133,14 @@ function handleEvent(room, p, m) {
     bcast(room, { t: 'event', k: 'grab', id: tg.id });
   } else if (m.k === 'release') {
     if (room.grab) { bcast(room, { t: 'event', k: 'release', id: room.grab.target }); room.grab = null; }
-  } else if (m.k === 'crush') {
-    if (t < room.crushReady) return;
-    room.crushReady = t + C.CRUSH_CD;
-    const victims = soldiersOf(room).filter(s => s.alive && s.st && h2(s.st.p, st.p) <= C.CRUSH_R * sc + C.SLACK / 2 && s.st.p[1] - (st.p[1]) <= C.CRUSH_H).map(s => s.id);
-    bcast(room, { t: 'event', k: 'crush', victims });
-    victims.forEach(id => kill(room, room.players.get(id), 'crush'));
+  } else if (m.k === 'kick') { // 蹴り: 発動から KICK_HIT 後に、周囲（全方向）の兵士をまとめて脱落。脚を失うと蹴れない。クールダウンなし（モーション中の連打のみ不可）
+    if (room.kickAt || t < room.kickLock || t < room.guardUntil || st.limbs[2] || st.limbs[3]) return;
+    room.kickAt = t + C.KICK_HIT; room.kickLock = t + C.KICK_LOCK;
+    bcast(room, { t: 'event', k: 'kick', ms: C.KICK_HIT });
   } else if (m.k === 'guard') {
     if (t < room.guardReady) return;
     room.guardUntil = t + C.GUARD_MS; room.guardReady = t + C.GUARD_CD; room.napePending = null; // 守り優先: 保留中のうなじ申告は無効
     bcast(room, { t: 'event', k: 'guard', ms: C.GUARD_MS });
-  } else if (m.k === 'sweep') { // 薙ぎ払い: 発動から SWEEP_HIT 後に、前方の半円内（空中を含む）の兵士へ「ヒット」を配信
-    if (t < room.sweepReady || room.sweepAt || t < room.guardUntil || room.grab || (st.limbs[0] && st.limbs[1])) return;
-    room.sweepReady = t + C.SWEEP_CD; room.sweepAt = t + C.SWEEP_HIT;
-    bcast(room, { t: 'event', k: 'sweep', ms: C.SWEEP_HIT });
   } else if (m.k === 'roar') {
     if (t < room.roarReady) return;
     room.roarReady = t + C.ROAR_CD; bcast(room, { t: 'event', k: 'roar', ms: C.ROAR_MS });
@@ -245,12 +238,10 @@ setInterval(() => {
     if (!rooms.has(room.code) || room.phase !== 'playing') continue;
     if (room.grab && t >= room.grab.until) { const v = room.players.get(room.grab.target); room.grab = null; if (v) { bcast(room, { t: 'event', k: 'eat', id: v.id }); kill(room, v, 'eat'); } }
     if (room.phase !== 'playing') continue;
-    if (room.sweepAt && t >= room.sweepAt) { room.sweepAt = 0; const gs0 = giantOf(room);
-      if (gs0 && gs0.st) { const q = gs0.st, fx = Math.sin(q.yaw), fz = Math.cos(q.yaw), ids = [];
-        for (const s of soldiersOf(room)) { if (!s.alive || !s.st || (room.grab && room.grab.target === s.id)) continue;
-          const dx = s.st.p[0] - q.p[0], dz = s.st.p[2] - q.p[2], d = Math.hypot(dx, dz);
-          if (d <= C.SWEEP_R * q.sc + C.SLACK && (d < 2 || (dx * fx + dz * fz) / d > -.15) && s.st.p[1] - q.p[1] <= C.SWEEP_H * q.sc) ids.push(s.id); }
-        bcast(room, { t: 'event', k: 'swept', ids, from: [q.p[0], q.p[2]] }); } }
+    if (room.kickAt && t >= room.kickAt) { room.kickAt = 0; const gk = giantOf(room);
+      if (gk && gk.st) { const q = gk.st, victims = soldiersOf(room).filter(s => s.alive && s.st && h2(s.st.p, q.p) <= C.KICK_R * q.sc + C.SLACK / 2 && s.st.p[1] - q.p[1] <= C.KICK_H * q.sc).map(s => s.id);
+        bcast(room, { t: 'event', k: 'kicked', victims }); victims.forEach(id => kill(room, room.players.get(id), 'kick')); }
+      if (room.phase !== 'playing') continue; }
     const np = room.napePending;
     if (np && t >= np.at) { room.napePending = null; const s = room.players.get(np.id), gg = giantOf(room); if (s && gg && validNape(room, s, gg)) { bcast(room, { t: 'event', k: 'nape', id: s.id }); endMatch(room, 'soldiers', 'nape'); continue; } }
     const g = giantOf(room);
