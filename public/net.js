@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-05e'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-07a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -56,6 +56,10 @@ const NET = (() => {
   N.closeLobby = () => { $('lobby').style.display = 'none'; $('ov').style.display = ''; };
   const name = () => { const v = $('lbName').value.trim() || '兵士'; try { localStorage.setItem('gvsName', v); } catch (e) {} return v; };
   $('goOn').onclick = N.openLobby;
+  { let sx = 0, sy = 0, ok = false; const go = $('goOn'); // iOS等で click が届かない環境向け: 指があまり動かなければタップとして扱う
+    go.addEventListener('touchstart', e => { const t = e.changedTouches[0]; sx = t.clientX; sy = t.clientY; ok = true; }, { passive: true });
+    go.addEventListener('touchmove', e => { const t = e.changedTouches[0]; if (Math.hypot(t.clientX - sx, t.clientY - sy) > 10) ok = false; }, { passive: true });
+    go.addEventListener('touchend', e => { if (!ok) return; ok = false; e.preventDefault(); e.stopPropagation(); N.openLobby(); }, { passive: false }); }
   $('lbCreate').onclick = () => { N.wasIn = 'fresh'; N.send({ t: 'create', name: name() }); };
   $('lbJoin').onclick = () => { N.wasIn = 'fresh'; N.send({ t: 'join', code: $('lbCode').value.trim().toUpperCase(), name: name() }); };
   $('roleG').onclick = () => N.send({ t: 'role', role: 'giant' });
@@ -77,7 +81,8 @@ const ONL = (() => {
   try { const j = JSON.parse(localStorage.getItem('gvsGiantCam') || 'null'); if (j) { O.camD = Math.max(18, Math.min(220, +j.d || 72)); O.camH = Math.max(-10, Math.min(90, isNaN(+j.h) ? 12 : +j.h)); } } catch (e) {}
   const camSave = () => { try { localStorage.setItem('gvsGiantCam', JSON.stringify({ d: O.camD, h: O.camH })); } catch (e) {} };
   const st = document.createElement('style');
-  st.textContent = `.ntag{position:fixed;z-index:2;pointer-events:none;display:none;font:700 12px "Noto Serif JP",serif;color:#fff;text-shadow:0 1px 3px #000;transform:translate(-50%,-100%);white-space:nowrap}.ntag.off{color:#f88}
+  st.textContent = `.ntag{position:fixed;z-index:2;pointer-events:none;display:none;font:700 12px "Noto Serif JP",serif;color:#fff;text-shadow:0 1px 3px #000;transform:translate(-50%,-100%);white-space:nowrap;text-align:center;will-change:left,top}.ntag.off{color:#f88}
+.ntag::after{content:"▼";display:block;line-height:.9;font-size:12px;color:#ffd27a;text-shadow:0 1px 2px #000}.ntag.big{font-size:15px}.ntag.big::after{font-size:16px}.ntag.edge{transform:translate(-50%,-50%);background:#000a;border-radius:10px;padding:2px 8px}.ntag.edge::after{display:none}
 .gbt{position:fixed;z-index:4;display:none;width:78px;height:78px;border-radius:50%;font:700 13px sans-serif;line-height:1.2;background:#000a;color:#fff;border:2px solid #fff9;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .gbt.sm{width:44px;height:44px;border-radius:10px;font-size:15px}
 .gbt.on{background:#d9822bdd;border-color:#fff}.gbt.cd{opacity:.5}
@@ -271,6 +276,23 @@ const ONL = (() => {
     cam.position.set(T.x + Math.sin(P.yaw) * cp * dist, Math.max(4, T.y - Math.sin(P.pitch) * dist + O.camH * sc), T.z + Math.cos(P.yaw) * cp * dist);
     cam.lookAt(T); if (cam.fov !== 74) { cam.fov = 74; cam.updateProjectionMatrix(); } sky.position.copy(cam.position);
   }
+  // 名前タグ: カメラの位置が確定した後に、最新のカメラ行列で投影して配置する（以前は1フレーム前の行列でずれていた）
+  function tagStep() {
+    const cv = (typeof R !== 'undefined' && R.domElement) ? R.domElement.getBoundingClientRect() : null, W = (cv && cv.width) || innerWidth, H = (cv && cv.height) || innerHeight, L0 = cv ? cv.left : 0, T0 = cv ? cv.top : 0, giant = isG();
+    cam.updateMatrixWorld(true); const gp = GI[0].G.position;
+    O.rem.forEach(r => {
+      const tg = r.tag; if (!r.tvis || !r.mesh.visible || !r.tp) { tg.style.display = 'none'; return; }
+      const dc = Math.hypot(r.tp[0] - cam.position.x, r.tp[2] - cam.position.z); if (dc > 300 && !giant) { tg.style.display = 'none'; return; }
+      V.set(r.tp[0], r.tp[1], r.tp[2]).project(cam); let x = V.x, y = V.y; const behind = V.z > 1, out = behind || Math.abs(x) > .94 || Math.abs(y) > .9; let arrow = '';
+      if (out) { if (!giant) { tg.style.display = 'none'; return; } // 巨人側: 画面外の兵士は端に矢印つきで表示して位置を見失わない
+        if (behind) { x = -x; y = -y; } if (Math.abs(x) < .001 && Math.abs(y) < .001) y = -1;
+        const s = Math.max(Math.abs(x) / .9, Math.abs(y) / .82); x /= s; y /= s; arrow = Math.abs(x) / .9 > Math.abs(y) / .82 ? (x < 0 ? '◀ ' : '▶ ') : (y > 0 ? '▲ ' : '▼ '); }
+      const dg = Math.round(Math.hypot(r.tp[0] - gp.x, r.tp[2] - gp.z));
+      tg.style.display = 'block'; tg.className = 'ntag' + (r.tc ? '' : ' off') + (giant ? ' big' : '') + (out ? ' edge' : '');
+      tg.textContent = arrow + r.tn + (giant ? '  ' + dg + 'm' : '');
+      tg.style.left = (L0 + (x * .5 + .5) * W) + 'px'; tg.style.top = (T0 + (-y * .5 + .5) * H) + 'px';
+    });
+  }
   function specTargets() { const t = [{ g: 1 }]; O.rem.forEach((r, id) => { if (r.mesh.visible) t.push({ id, r }); }); return t; }
   function specCam() { // 脱落後の観戦: 巨人 / 生存兵士の視点を切り替え
     const ts = specTargets(), t = ts[O.specIdx % ts.length]; $$('specTxt').textContent = '観戦中: ' + (t.g ? '巨人' : nameOf(t.id));
@@ -314,7 +336,7 @@ const ONL = (() => {
       case 'release': endGrab(false); if (m.id === NET.id) { P.eaten = false; fig.visible = true; } break;
       case 'eat': endGrab(true); break;
       case 'crush': stomp(); break;
-      case 'guard': O.guardUntil = Date.now() + m.ms; break;
+      case 'guard': O.guardUntil = Date.now() + m.ms; if (!isG() && P.slash) { P.slash = false; P.slashT = 0; P.sw2 = false; toast('うなじ守りで弾かれた！'); } break;
       case 'dead': onDead(m.id, m.by); break;
       case 'limb': applyLimb(m.key); break;
     }
@@ -401,18 +423,16 @@ const ONL = (() => {
       const seen = new Set();
       for (const sb of B.s) {
         if (sb.id === NET.id) continue; const sa = find(A, sb.id) || sb; seen.add(sb.id);
-        let r = O.rem.get(sb.id); if (!sb.a || (O.grab && O.grab.id === sb.id)) { if (r) { r.mesh.visible = false; r.line.visible = false; r.tag.style.display = 'none'; } continue; }
+        let r = O.rem.get(sb.id); if (!sb.a || (O.grab && O.grab.id === sb.id)) { if (r) { r.mesh.visible = false; r.line.visible = false; r.tvis = false; r.tag.style.display = 'none'; } continue; }
         if (!r) r = mk(sb.id); r.mesh.visible = r.line.visible = true;
         const x = lp(sa.p[0], sb.p[0], k), y = lp(sa.p[1], sb.p[1], k), z = lp(sa.p[2], sb.p[2], k), yaw = sa.yaw + ad(sb.yaw, sa.yaw) * k;
         r.mesh.position.set(x, y - 1.7 - O.FEET, z); r.mesh.rotation.set(sb.f & 1 ? .3 : 0, yaw, 0);
         const ws = (k > .5 ? sb : sa).w, ps = r.line.geometry.attributes.position, hip = [x, y - .8, z];
         for (let j = 0; j < 2; j++) { const q = ws[j] || hip; ps.setXYZ(j * 2, hip[0], hip[1], hip[2]); ps.setXYZ(j * 2 + 1, q[0], q[1], q[2]); }
         ps.needsUpdate = true;
-        V.set(x, y + 1.2, z).project(cam); const tg = r.tag, vis = V.z < 1 && Math.hypot(x - cam.position.x, z - cam.position.z) < 300;
-        tg.style.display = vis ? 'block' : 'none'; tg.className = 'ntag' + (sb.c ? '' : ' off'); tg.textContent = nameOf(sb.id) + (sb.c ? '' : '（切断中）');
-        tg.style.left = (V.x * .5 + .5) * innerWidth + 'px'; tg.style.top = (-V.y * .5 + .5) * innerHeight + 'px';
+        r.tp = [x, y + .45, z]; r.tn = nameOf(sb.id) + (sb.c ? '' : '（切断中）'); r.tc = sb.c ? 1 : 0; r.tvis = true; // 名前タグは頭のすぐ上（カメラ確定後に配置）
       }
-      O.rem.forEach((r, id) => { if (!seen.has(id)) { r.mesh.visible = r.line.visible = false; r.tag.style.display = 'none'; } });
+      O.rem.forEach((r, id) => { if (!seen.has(id)) { r.mesh.visible = r.line.visible = false; r.tvis = false; r.tag.style.display = 'none'; } });
       // 相手の巨人（兵士側で表示）: 位置・向き・頭・速度を補間し、歩行アニメは既存の姿勢計算で再生。欠損は申告に合わせる
       const ga = A.g || B.g, gb = B.g || A.g;
       if (!giant && gb) {
@@ -436,6 +456,7 @@ const ONL = (() => {
       if (dz || dh) { O.camD = Math.max(18, Math.min(220, O.camD + dz * 70 * realDt)); O.camH = Math.max(-10, Math.min(90, O.camH + dh * 35 * realDt)); O.camDirty = true; } else if (O.camDirty) { O.camDirty = false; camSave(); }
     }
     if (giant) giantCam(); else if (O.dead && !over) specCam();
+    tagStep();
   };
   addEventListener('click', e => { if (O.dead && !over && !(e.target.closest && e.target.closest('button'))) O.specIdx++; });
   NET.on('start', m => {
