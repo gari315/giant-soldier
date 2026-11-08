@@ -75,6 +75,7 @@ async function selftest() {
 
   // --- 四肢の切断（巨人の近くの兵士のみ、1部位1回）---
   D.send({ t: 'event', k: 'limb', key: 'rightArm' }); await sleep(100); ok(!G.q.some(m => m.k === 'limb'), '切断: 遠い兵士の申告は却下');
+  D.send({ t: 'event', k: 'limb', key: 'rightArm', sp: 1 }); ok((await G.until(m => m.k === 'limb' && m.key === 'rightArm', 1500)) !== null, '切断: 雷槍（sp）なら遠くからの申告も通る');
   A.send({ t: 'event', k: 'limb', key: 'leftArm' }); ok((await G.until(m => m.k === 'limb' && m.key === 'leftArm')) !== null, '切断: 近い兵士の申告は全員に配信');
   A.send({ t: 'event', k: 'limb', key: 'leftArm' }); await sleep(100); ok(!G.q.some(m => m.k === 'limb'), '切断: 同じ部位の重複は却下');
 
@@ -83,7 +84,11 @@ async function selftest() {
   A.soldier([0, 33, 5]); await sleep(100); A.send({ t: 'event', k: 'nape' }); await sleep(100); ok(!A.q.some(m => m.t === 'result'), 'うなじ: 正面からの申告は却下');
   G.send({ t: 'event', k: 'guard' }); await G.until(m => m.k === 'guard');
   A.soldier([0, 33, -5]); await sleep(100); A.send({ t: 'event', k: 'nape' }); await sleep(100); ok(!A.q.some(m => m.t === 'result'), 'うなじ守り中は斬れない');
-  await sleep(1900); A.send({ t: 'event', k: 'nape' }); // 守り1.5秒 + 余韻0.25秒のあと
+  await sleep(1900);
+  G.send({ t: 'event', k: 'guard' }); ok((await G.until(m => m.k === 'guard', 2000))?.left === 1, 'うなじ守り: 2回目（残り1回）'); await sleep(1900);
+  G.send({ t: 'event', k: 'guard' }); ok((await G.until(m => m.k === 'guard', 2000))?.left === 0, 'うなじ守り: 3回目（残り0回）'); await sleep(1900);
+  G.q = G.q.filter(m => m.k !== 'guard'); G.send({ t: 'event', k: 'guard' }); await sleep(400); ok(!G.q.some(m => m.k === 'guard'), 'うなじ守り: 回数を使い切ると発動できない');
+  A.send({ t: 'event', k: 'nape' }); // 守り1.5秒 + 余韻0.25秒のあと
   const res = await A.until(m => m.t === 'result'); ok(res?.winner === 'soldiers' && res.reason === 'nape', '背後・至近距離のうなじ申告で兵士の勝ち（確定は0.25秒後）');
 
   // --- 再戦（役割交代あり）・再接続・巨人退出 ---
