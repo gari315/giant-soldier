@@ -13,7 +13,9 @@ const C = {
   GRAB_MS: 2500,          // 掴んでから食べるまで
   GRAB_HAND_R: 5,         // 掴み: 巨人の手（クライアント申告の手の位置）と兵士の距離 = R*スケール + SLACK。手が触れれば向き・状況を問わず掴める
   KICK_R: 16, KICK_H: 22, KICK_HIT: 1130, KICK_LOCK: 1800, // 蹴り: 全方向（360°）・半径(スケール倍)・届く高さ・発生までの時間・連打できない最短間隔(モーション分)
-  GUARD_MS: 1500, GUARD_CD: 0,
+  GUARD_MS: 1500, GUARD_CD: 0, GUARD_MAX: 3, // うなじ守り: クールダウンなし・1試合あたりの使用回数に上限
+  SPEAR_RANGE: 200,       // 雷槍での四肢切断は遠くから届く（通常の切断は 25×スケール以内）
+
   ROAR_CD: 14000, ROAR_MS: 4000,                           // 咆哮: 全兵士の位置が巨人に見える時間
   GUARD_TAIL: 250,       // 守り終了後も、遅延ぶんだけうなじ申告を拒否する
   NAPE_DELAY: 250,       // うなじ申告の確定を遅らせる時間。この間に守りが発動したら申告は取り消し（通信遅延で守りが負けないように）
@@ -64,10 +66,10 @@ function addPlayer(room, name, ws) {
   return p;
 }
 function startMatch(room) {
-  room.phase = 'playing'; room.grab = null; room.kickAt = 0; room.kickLock = 0; room.guardUntil = 0; room.guardReady = 0; room.napePending = null; room.roarReady = 0; room.collapsed = new Set(); room.limbs = new Set(); room.t0 = now();
+  room.phase = 'playing'; room.grab = null; room.kickAt = 0; room.kickLock = 0; room.guardLeft = C.GUARD_MAX; room.guardUntil = 0; room.guardReady = 0; room.napePending = null; room.roarReady = 0; room.collapsed = new Set(); room.limbs = new Set(); room.t0 = now();
   let i = 0;
   for (const p of room.players.values()) { p.alive = true; p.st = null; p.idx = p.role === 'soldier' ? i++ : 0; }
-  bcast(room, { t: 'start', seed: crypto.randomInt(1e9), players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, role: p.role, idx: p.idx })) });
+  bcast(room, { t: 'start', gl: C.GUARD_MAX, seed: crypto.randomInt(1e9), players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, role: p.role, idx: p.idx })) });
   roster(room);
 }
 function endMatch(room, winner, reason) {
@@ -119,7 +121,7 @@ function handleEvent(room, p, m) {
   }
   if (m.k === 'limb' && p.role === 'soldier') { // 四肢の切断: 巨人の近くの生存兵士の申告のみ、1部位1回だけ全員へ
     if (!g || !g.st || !p.alive || !p.st || !LIMBS.includes(m.key) || room.limbs.has(m.key)) return;
-    if (h2(p.st.p, g.st.p) > 25 * g.st.sc + C.SLACK) return;
+    if (h2(p.st.p, g.st.p) > (m.sp ? C.SPEAR_RANGE : 25) * g.st.sc + C.SLACK) return; // m.sp: 雷槍による切断（遠距離OK）
     room.limbs.add(m.key); bcast(room, { t: 'event', k: 'limb', key: m.key, id: p.id }); return;
   }
   if (p.role !== 'giant' || !giantOK(room, p)) return;
@@ -139,9 +141,9 @@ function handleEvent(room, p, m) {
     room.kickAt = t + C.KICK_HIT; room.kickLock = t + C.KICK_LOCK;
     bcast(room, { t: 'event', k: 'kick', ms: C.KICK_HIT });
   } else if (m.k === 'guard') {
-    if (t < room.guardReady) return;
-    room.guardUntil = t + C.GUARD_MS; room.guardReady = t + C.GUARD_CD; room.napePending = null; // 守り優先: 保留中のうなじ申告は無効
-    bcast(room, { t: 'event', k: 'guard', ms: C.GUARD_MS });
+    if (t < room.guardReady || t < room.guardUntil || room.guardLeft <= 0) return; // 発動中の重ね掛け・使い切り後は無効
+    room.guardLeft--; room.guardUntil = t + C.GUARD_MS; room.guardReady = t + C.GUARD_CD; room.napePending = null; // 守り優先: 保留中のうなじ申告は無効
+    bcast(room, { t: 'event', k: 'guard', ms: C.GUARD_MS, left: room.guardLeft });
   } else if (m.k === 'roar') {
     if (t < room.roarReady) return;
     room.roarReady = t + C.ROAR_CD; bcast(room, { t: 'event', k: 'roar', ms: C.ROAR_MS });
@@ -191,7 +193,7 @@ wss.on('connection', ws => {
         if (p.ws && p.ws !== ws) { p.ws.room = null; p.ws.close(); }
         p.ws = ws; p.connected = true; p.discAt = 0; ws.pid = p.id; ws.room = room.code;
         send(p, { t: 'joined', id: p.id, token: p.token, code: room.code, resumed: true });
-        if (room.phase === 'playing') send(p, { t: 'start', resumed: true, players: [...room.players.values()].map(x => ({ id: x.id, name: x.name, role: x.role, idx: x.idx || 0 })), dead: [...room.players.values()].filter(x => !x.alive).map(x => x.id) });
+        if (room.phase === 'playing') send(p, { t: 'start', resumed: true, gl: room.guardLeft, players: [...room.players.values()].map(x => ({ id: x.id, name: x.name, role: x.role, idx: x.idx || 0 })), dead: [...room.players.values()].filter(x => !x.alive).map(x => x.id) });
         return roster(room);
       } else return;
       send(p, { t: 'joined', id: p.id, token: p.token, code: room.code });
