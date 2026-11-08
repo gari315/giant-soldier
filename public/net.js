@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-10a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-11a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -223,7 +223,8 @@ const ONL = (() => {
   }
   function actGuard() {
     if (!canAct() || O.grab) return; const now = Date.now(); if (now < O.guardUntil) return;
-    NET.send({ t: 'event', k: 'guard' }); toast('うなじ守り！（動けません）');
+    if (O.guardLeft <= 0) return toast('うなじ守りは使い切りました');
+    NET.send({ t: 'event', k: 'guard' }); toast('うなじ守り！（動けません） 残り' + (O.guardLeft - 1) + '回');
   }
   function actRoar() { // 咆哮: 数秒間、全兵士の位置が巨人の画面に表示される
     if (!canAct()) return; const now = Date.now();
@@ -330,7 +331,8 @@ const ONL = (() => {
     if (limbless) headG.rotation.y += (.6 * gs.limbSide - headG.rotation.y) * Math.min(1, 3 * dt);
     else { const ty = Math.max(-.7, Math.min(.7, ad(Math.atan2(-sn, -c), gs.yaw))); headG.rotation.y += (ty - headG.rotation.y) * Math.min(1, 8 * dt); }
     const canGo = moving && gs.stag <= 0 && !limbless && !O.guard && !O.grab; gs.mv = canGo; // 守り中・掴み中は動けない
-    if (O.follow > 0 && canGo && !manual && !O.fp && nowT - (O.manualT || 0) > 1200) { const st2 = O.follow * 1.8 * dt; P.yaw += Math.max(-st2, Math.min(st2, ad(gs.yaw + Math.PI, P.yaw))); } // カメラ自動追従: 歩いている間、ゆっくり巨人の背後へ回り込む
+    const fpOn = !!O.fp, folRate = fpOn ? 3 : O.follow * 1.8; // 一人称は常に、移動している向きへカメラも合わせる（視点を手で動かした直後は除く）
+    if (folRate > 0 && canGo && !manual && nowT - (O.manualT || 0) > (fpOn ? 700 : 1200)) { const st2 = folRate * dt; P.yaw += Math.max(-st2, Math.min(st2, ad(gs.yaw + Math.PI, P.yaw))); } // カメラ自動追従: 歩いている間、ゆっくり巨人の背後へ回り込む
     O.expYaw = P.yaw;
     const al = moving ? Math.max(0, Math.cos(Math.min(Math.abs(da), 1.4))) : 0, base = (gs.run > 0 ? tr.chaseSpeed : tr.walkSpeed) * (gs.hurt > 0 ? .45 : 1) * O.SPD_MUL * (gs.cq ? .5 : 1) * (.45 + .55 * al); // 向きが目標に近いほど速い（旋回しながら進める）
     if (legLoss === 0) {
@@ -464,14 +466,14 @@ const ONL = (() => {
       case 'kick': kick(); break;
       case 'kicked': { useG(GI[0]); const R = O.KICK_R * G.scale.x; O.kickDelay = {}; (m.victims || []).forEach(id => { const r = O.rem.get(id), pp = id === NET.id ? P.pos : r && r.mesh.position; if (pp) O.kickDelay[id] = Math.min(.35, Math.hypot(pp.x - G.position.x, pp.z - G.position.z) / R * .35); }); break; }
       case 'nape': O.napeBy = m.id; flash(true); shake = Math.max(shake, 1.5); slowmo(2.6); break; // うなじを斬った瞬間（結果は直後に届く）
-      case 'guard': O.guardUntil = Date.now() + m.ms; if (!isG() && P.slash) { P.slash = false; P.slashT = 0; P.sw2 = false; toast('うなじ守りで弾かれた！'); } break;
+      case 'guard': O.guardUntil = Date.now() + m.ms; if (m.left != null) O.guardLeft = m.left; if (!isG() && P.slash) { P.slash = false; P.slashT = 0; P.sw2 = false; toast('うなじ守りで弾かれた！'); } break;
       case 'dead': onDead(m.id, m.by); break;
       case 'limb': applyLimb(m.key); break;
       case 'roar': { O.roarUntil = Date.now() + (m.ms || 4000); O.roarMouth = Date.now() + 1400; shake = Math.max(shake, .8);
         if (isG()) toast('咆哮！ 全員の位置が見える'); else if (!O.dead) popup('巨人の咆哮！ 位置を知られた', 'big'); break; }
     }
   }
-  O.sever = key => NET.send({ t: 'event', k: 'limb', key });            // 自分の刃で切断した → サーバー経由で全員へ
+  O.sever = key => NET.send({ t: 'event', k: 'limb', key, sp: O.viaSpear ? 1 : 0 });            // 自分の刃で切断した → サーバー経由で全員へ
   O.nape = () => { P.slash = false; P.slashT = 0; P.sw2 = false; if (Date.now() < O.napeCd) return; O.napeCd = Date.now() + 1200; NET.send({ t: 'event', k: 'nape' }); }; // うなじ斬りの申告（確定はサーバー）
 
   // ---- 結果画面 ----
@@ -514,7 +516,7 @@ const ONL = (() => {
   O.start = m => {
     $$('resOv').style.display = 'none'; $$('specBar').style.display = 'none'; GBTN.forEach(b => b.style.display = 'none');
     O.ui.forEach(([e, d]) => { e.style.display = d; }); O.ui = [];
-    deathBn.style.display = 'none'; kf.innerHTML = ''; Object.assign(O, { me: m.players.find(p => p.id === NET.id), snaps: [], off: null, armT: null, armId: null, armStick: { x: 0, y: 0, sx: 0, sy: 0 }, camBtn: { d: 0, h: 0 }, grab: null, guardUntil: 0, kickT: 0, roarUntil: 0, roarMouth: 0, dead: false, giantDead: false, result: null, al: 0, specIdx: 0, cd: { roar: 0 }, napeCd: 0 }); O.clear();
+    deathBn.style.display = 'none'; kf.innerHTML = ''; Object.assign(O, { me: m.players.find(p => p.id === NET.id), snaps: [], off: null, armT: null, armId: null, armStick: { x: 0, y: 0, sx: 0, sy: 0 }, camBtn: { d: 0, h: 0 }, grab: null, guardUntil: 0, guardLeft: m.gl != null ? m.gl : 3, kickT: 0, roarUntil: 0, roarMouth: 0, dead: false, giantDead: false, result: null, al: 0, specIdx: 0, cd: { roar: 0 }, napeCd: 0 }); O.clear();
     NET.on('snap', onSnap); NET.on('event', onEvent); O.active = true; PREF.map = false; PREF.arrow = false;
     if (!O.me) return;
     startGame(); held.visible = false; fig.visible = true; cam.fov = 70; cam.updateProjectionMatrix();
@@ -601,11 +603,11 @@ const ONL = (() => {
     if (giant) bRun.classList.toggle('on', O.runBtn);
     // HUD とカメラ
     const cdS = t => Math.max(0, Math.ceil((t - now) / 1000));
-    if (giant) { const c4 = cdS(O.cd.roar); bRoar.textContent = c4 ? '咆哮 ' + c4 : '咆哮'; bRoar.classList.toggle('cd', c4 > 0); }
+    if (giant) { bGuard.textContent = 'うなじ守り ' + O.guardLeft + '回'; bGuard.classList.toggle('cd', O.guardLeft <= 0); const c4 = cdS(O.cd.roar); bRoar.textContent = c4 ? '咆哮 ' + c4 : '咆哮'; bRoar.classList.toggle('cd', c4 > 0); }
     let watched = false; // 巨人の視線（正面±約33°・距離110以内・建物に遮られない）に入ると警告
     if (!giant && !O.dead && !over) { const o = GI[0], ya = o.gs.yaw + o.headG.rotation.y, wx = P.pos.x - o.G.position.x, wz = P.pos.z - o.G.position.z, wd = Math.hypot(wx, wz);
       if (o.G.visible && wd > 1 && wd < 110 * o.G.scale.x && (wx * Math.sin(ya) + wz * Math.cos(ya)) / wd > .84) { useG(o); watched = los(); } }
-    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 咆哮 ${cdS(O.cd.roar) || '可'}${O.guard ? ' ｜ うなじ守り発動中' : ''}${mode === 'PC' ? ' ｜ 手に触れると掴む / 右クリック・Space蹴り(全方向) / Cうなじ守り / T咆哮 / Bカメラ寄り / G長押しでしゃがむ / Shift走る / V視点 / Q・E+WASDで腕 / Z・Xズーム R・F高さ' : ''}`
+    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 咆哮 ${cdS(O.cd.roar) || '可'} ｜ うなじ守り 残り${O.guardLeft}回${O.guard ? '（発動中）' : ''}${mode === 'PC' ? ' ｜ 手に触れると掴む / 右クリック・Space蹴り(全方向) / Cうなじ守り / T咆哮 / Bカメラ寄り / G長押しでしゃがむ / Shift走る / V視点 / Q・E+WASDで腕 / Z・Xズーム R・F高さ' : ''}`
       : O.dead ? '観戦中（クリック/Tabで視点切替）' : `生存兵士 ${O.al}人 ｜ 巨人のうなじを背後から斬れ${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}${watched ? ' ｜ ⚠ 巨人に見られている！' : ''}`;
     hud.msg.textContent = msg;
     if (giant && !isPaused) { // カメラ距離/高さ: Z/X=ズーム, R/F=高さ, ホイール=ズーム, 画面の「拡縮上下」ボタン
