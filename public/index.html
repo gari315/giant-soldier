@@ -742,7 +742,7 @@ function updSpears(dt){spCd-=dt;
    if(p.y<.3||Math.max(Math.abs(p.x),Math.abs(p.z))>WALL_IN){hit=true;boom(p,2);break;}
    for(const o of GI){if(o.gs.dead)continue;const np=o.nape.getWorldPosition(new THREE.Vector3());
     if(p.distanceTo(np)<3.4*Math.max(.85,o.G.scale.x)&&napeBehind(o,p)){const pv=P.vel.clone();useG(o);killGiant();P.vel.copy(pv);boom(np,7);hit=true;break;}
-    for(const g of o.GS){if(!g.partKey&&window.ONL&&ONL.active)continue;if(g.partKey&&o.gs.parts[g.partKey].severed)continue;const c=g[0].localToWorld(new THREE.Vector3(g[1],g[2],g[3]));if(p.distanceTo(c)<g[4]*o.G.scale.x){if(g.partKey)severLimb(o,g.partKey,p.clone(),true);else{addWound(o,g,p.clone(),c);damageGiant(o,30);}o.gs.hurt=18;o.gs.stag=Math.max(o.gs.stag,1.4);o.gs.windup=0;o.gs.recover=Math.max(o.gs.recover,.8);boom(p,5);hit=true;break;}}
+    for(const g of o.GS){if(!g.partKey&&window.ONL&&ONL.active)continue;if(g.partKey&&o.gs.parts[g.partKey].severed)continue;const c=g[0].localToWorld(new THREE.Vector3(g[1],g[2],g[3]));if(p.distanceTo(c)<g[4]*o.G.scale.x){if(g.partKey){if(window.ONL)ONL.viaSpear=true;severLimb(o,g.partKey,p.clone(),true);if(window.ONL)ONL.viaSpear=false;}else{addWound(o,g,p.clone(),c);damageGiant(o,30);}o.gs.hurt=18;o.gs.stag=Math.max(o.gs.stag,1.4);o.gs.windup=0;o.gs.recover=Math.max(o.gs.recover,.8);boom(p,5);hit=true;break;}}
     if(hit)break;}
    if(hit)break;
    buildingList.forEach((b,bi)=>{if(hit||b.destroyed||b.collapsing)return;const d=Math.max(Math.abs(p.x-b.px),Math.abs(p.z-b.pz)),rw=b.w*.559;
