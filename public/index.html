@@ -1493,7 +1493,8 @@ function updArrows(){
 const mmC=$('mm'),mmX=mmC.getContext('2d');let mmT=0;
 function drawMinimap(dt){
  mmT-=dt;if(mmT>0)return;mmT=.07;
- if(!PREF.map||over){mmC.style.display='none';return;}mmC.style.display='block';
+ if(!PREF.map||over||(window.ONL&&ONL.active&&ONL.me&&ONL.me.role==='giant')){mmC.style.display='none';return;} // オンラインの巨人は net.js 側のミニマップを使う
+ mmC.style.display='block';
  const W=192,R=W/2,sc=.75,g=mmX,c=Math.cos(P.yaw),s=Math.sin(P.yaw),px=P.pos.x,pz=P.pos.z;
  const mp=(x,z)=>{const dx=x-px,dz=z-pz;return[R+(dx*c-dz*s)*sc,R+(dx*s+dz*c)*sc];};
  g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,W);g.save();g.beginPath();g.arc(R,R,R-2,0,6.2832);g.clip();
