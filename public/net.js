@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-09a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-10a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -76,9 +76,13 @@ const ONL = (() => {
   const O = { active: false, snaps: [], off: null, rem: new Map(), acc: 0, me: null, DELAY: 100, SEND_HZ: 20, FIG: null, FEET: 0, runBtn: false, guard: false,
     TURN_MUL: 1.6, SPD_MUL: 1,                                            // 巨人の旋回・速度の調整用
     GRAB_REACH: 12, KICK_R: 16, KICK_H: 22, KICK_T: 1.6, KICK_HIT: 1.13, crouchBtn: false, grabTry: 0, ROAR_CD: 14000, kickT: 0, roarUntil: 0, roarMouth: 0, armId: null, armStick: { x: 0, y: 0, sx: 0, sy: 0 },         // サーバー(server.js の C)と合わせる
-    grab: null, camD: 60, camH: 12, zoomOn: false, zk: 1, camBtn: { d: 0, h: 0 }, armT: null, guardUntil: 0, cd: { roar: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
+    grab: null, camD: 60, camH: 12, zoomOn: false, zk: 1, armSel: 0, armSens: 1, follow: .6, basis: null, expYaw: null, manualT: 0, camBtn: { d: 0, h: 0 }, armT: null, guardUntil: 0, cd: { roar: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
   const $$ = id => document.getElementById(id);
   try { const j = JSON.parse(localStorage.getItem('gvsGiantCam') || 'null'); if (j) { O.camD = Math.max(18, Math.min(220, +j.d || 72)); O.camH = Math.max(-10, Math.min(90, isNaN(+j.h) ? 12 : +j.h)); } } catch (e) {}
+  // 巨人の操作設定（ポーズ画面のスライダで調整・保存）
+  const CFG_DEF = { turn: 2.6, spd: 1, arm: 1, fol: .6 }; let cfg = Object.assign({}, CFG_DEF);
+  try { const j = JSON.parse(localStorage.getItem('gvsGiantCfg') || 'null'); if (j) Object.keys(CFG_DEF).forEach(k => { if (isFinite(+j[k])) cfg[k] = +j[k]; }); } catch (e) {}
+  const applyCfg = () => { O.TURN_MUL = cfg.turn; O.SPD_MUL = cfg.spd; O.armSens = cfg.arm; O.follow = cfg.fol; }; applyCfg();
   const camSave = () => { try { localStorage.setItem('gvsGiantCam', JSON.stringify({ d: O.camD, h: O.camH })); } catch (e) {} };
   const st = document.createElement('style');
   st.textContent = `.ntag{position:fixed;z-index:2;pointer-events:none;display:none;font:700 12px "Noto Serif JP",serif;color:#fff;text-shadow:0 1px 3px #000;transform:translate(-50%,-100%);white-space:nowrap;text-align:center;will-change:left,top}.ntag.off{color:#f88}
@@ -89,7 +93,8 @@ const ONL = (() => {
 #joyA{position:fixed;z-index:4;display:none;border-radius:50%;background:#fff1;border:2px solid #fff4;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}#joyA b{position:absolute;width:38%;height:38%;left:31%;top:31%;border-radius:50%;background:#fff6}#joyA.on{background:#ffb04033;border-color:#ffd28a}#joyA i{position:absolute;left:0;right:0;top:-17px;text-align:center;font:700 11px sans-serif;font-style:normal;color:#fffc;text-shadow:0 1px 2px #000}.ntag.rev{color:#ff9a8a;font-size:16px}
 #deathBn{position:fixed;left:50%;top:30%;transform:translate(-50%,-50%);z-index:7;text-align:center;pointer-events:none;display:none;color:#fff;text-shadow:0 2px 8px #000;max-width:88vw}#deathBn h2{margin:0 0 8px;font:900 clamp(26px,7vw,52px) "Noto Serif JP",serif;color:#ff6a5a;letter-spacing:.08em}#deathBn p{margin:3px 0;font:700 clamp(12px,3.2vw,16px) "Noto Serif JP",serif;background:#000b;padding:4px 10px;border-radius:8px;display:inline-block}
 #hitFlash{position:fixed;inset:0;z-index:6;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 50%,#ff2a1a00 25%,#ff2a1acc 100%)}#hitFlash.w{background:radial-gradient(circle at 50% 50%,#ffffff55 0%,#fffffff0 100%)}
-#mm{position:fixed;left:8px;top:56px;z-index:3;display:none;pointer-events:none;border-radius:50%;border:2px solid #fff6;background:#0009}.nring{position:fixed;z-index:1;pointer-events:none;display:none;border:2px solid #ffb454;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 6px #000,0 0 8px currentColor inset}
+#gmm{position:fixed;left:8px;top:56px;z-index:3;display:none;pointer-events:none;border-radius:50%;border:2px solid #fff6;background:#0009}.nring{position:fixed;z-index:1;pointer-events:none;display:none;border:2px solid #ffb454;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 6px #000,0 0 8px currentColor inset}
+#gcfg{display:none;max-width:420px;width:88vw;margin-top:6px;padding:8px 12px;border:1px solid #fff4;border-radius:10px;background:#0006;font:600 13px sans-serif;color:#fff}#gcfg h4{margin:0 0 6px;font-size:14px}#gcfg .r{display:flex;align-items:center;gap:8px;margin:4px 0}#gcfg .r span:first-child{width:9em}#gcfg input[type=range]{flex:1}#gcfg .v{width:3.2em;text-align:right}
 #kf{position:fixed;left:8px;top:96px;z-index:3;pointer-events:none;font:700 12px sans-serif;color:#fff;text-shadow:0 1px 3px #000}#kf div{background:#000a;margin:2px 0;padding:2px 8px;border-radius:6px;width:fit-content}
 #pauseBtn,#vw,#lockRetry{z-index:20!important}
 @media (pointer:coarse){html,body{position:fixed!important;inset:0;width:100%;height:100%;overflow:hidden!important;overscroll-behavior:none}}
@@ -111,22 +116,27 @@ const ONL = (() => {
   const bKick = mkBtn('gKick', '蹴り', 14, 24, v => { if (v) actKick(); });
   const bGuard = mkBtn('gGuard', 'うなじ守り', 14, 24, v => { if (v) actGuard(); });
   const bRoar = mkBtn('gRoar', '咆哮', 14, 24, v => { if (v) actRoar(); });
+  const bMap = mkBtn('gMap', '地図', 0, 0, v => { if (v) mapToggle(); }, 'sm', 50);
+  const bArmSel = mkBtn('gArmSel', '両腕', 0, 0, v => { if (v) armSelCycle(); }, 'sm', 50);
+  const mapToggle = () => { PREF.map = !PREF.map; const c = $$('mapC'); if (c) c.checked = PREF.map; try { savePref(); } catch (e) {} toast(PREF.map ? 'ミニマップ 表示' : 'ミニマップ 非表示'); };
+  const armSelCycle = () => { O.armSel = (O.armSel + 1) % 3; bArmSel.textContent = ['両腕', '左腕', '右腕'][O.armSel]; toast('腕スティック: ' + ['両腕を同時に動かす', '左腕だけ動かす', '右腕だけ動かす'][O.armSel]); };
   const bZoom = mkBtn('gZoom', '寄る', 14, 24, v => { if (v) zoomToggle(); });
   const zoomToggle = () => { O.zoomOn = !O.zoomOn; bZoom.classList.toggle('on', O.zoomOn); toast(O.zoomOn ? 'カメラを寄せました（もう一度で戻る）' : 'カメラを戻しました'); };
   const bCamIn = mkBtn('gCamIn', '拡', 0, 0, v => { O.camBtn.d = v ? -1 : 0; }, 'sm', 50);
   const bCamOut = mkBtn('gCamOut', '縮', 0, 0, v => { O.camBtn.d = v ? 1 : 0; }, 'sm', 50);
   const bCamUp = mkBtn('gCamUp', '上', 0, 0, v => { O.camBtn.h = v ? 1 : 0; }, 'sm', 50);
   const bCamDn = mkBtn('gCamDn', '下', 0, 0, v => { O.camBtn.h = v ? -1 : 0; }, 'sm', 50);
-  const mm = document.createElement('canvas'); mm.id = 'mm'; document.body.appendChild(mm); let mmS = 100; const mmc = mm.getContext('2d');
+  const mm = document.createElement('canvas'); mm.id = 'gmm'; document.body.appendChild(mm); let mmS = 100; const mmc = mm.getContext('2d');
   const aj = document.createElement('div'); aj.id = 'joyA'; aj.innerHTML = '<i>腕</i><b></b>'; document.body.appendChild(aj); const ajThumb = aj.querySelector('b'); // 腕スティック（右下）
-  const GBTN = [bRun, bCrouch, bKick, bGuard, bRoar, bZoom, bCamIn, bCamOut, bCamUp, bCamDn, aj];
+  const GBTN = [bRun, bCrouch, bKick, bGuard, bRoar, bZoom, bCamIn, bCamOut, bCamUp, bCamDn, bMap, bArmSel, aj];
   function layout() { // 画面の高さに合わせてボタンと腕スティックを配置（横向きスマホでも重ならないように）
     const H = innerHeight, u = Math.round(Math.max(52, Math.min(78, H * .17))), g = 8, r0 = 14, b0 = 24, D = Math.round(Math.max(88, Math.min(124, H * .28)));
     const place = (b, col, row) => { b.style.width = b.style.height = u + 'px'; b.style.right = (r0 + col * (u + g)) + 'px'; b.style.bottom = (b0 + row * (u + g)) + 'px'; b.style.top = 'auto'; b.style.fontSize = u < 64 ? '11px' : '13px'; };
     place(bRun, 0, 0); place(bCrouch, 1, 0); place(bRoar, 2, 0); place(bKick, 0, 1); place(bGuard, 1, 1); place(bZoom, 2, 1);
     mm.width = mm.height = mmS = Math.round(Math.max(84, Math.min(120, H * .26))); mm.style.width = mm.style.height = mmS + 'px';
     aj.style.width = aj.style.height = D + 'px'; aj.style.right = (r0 + (2 * u + g - D) / 2) + 'px'; aj.style.bottom = (b0 + 2 * (u + g) + 6) + 'px';
-    [bCamDn, bCamUp, bCamOut, bCamIn].forEach((b, k) => { b.style.width = b.style.height = '40px'; b.style.right = (8 + k * 46) + 'px'; b.style.top = '50px'; b.style.bottom = 'auto'; });
+    bArmSel.style.width = bArmSel.style.height = '40px'; bArmSel.style.right = (r0 + (2 * u + g - D) / 2 + D + 8) + 'px'; bArmSel.style.bottom = (b0 + 2 * (u + g) + 6 + D / 2 - 20) + 'px'; bArmSel.style.top = 'auto';
+    [bCamDn, bCamUp, bCamOut, bCamIn, bMap].forEach((b, k) => { b.style.width = b.style.height = '40px'; b.style.right = (8 + k * 46) + 'px'; b.style.top = '50px'; b.style.bottom = 'auto'; });
   }
   layout(); addEventListener('resize', layout); addEventListener('orientationchange', () => setTimeout(layout, 300));
 
@@ -175,8 +185,8 @@ const ONL = (() => {
       let qs, qe;
       if (tgt && i === gs.arm) { const q2 = ikArm(A, chest.worldToLocal(tgt.clone()), gs.prone > .5 ? pronePole(A) : null); qs = q2[0]; qe = q2[1]; }
       else if (np && !(gs.prone > .12)) { const q2 = ikArm(A, chest.worldToLocal(np.clone().add(new THREE.Vector3(0, -.8, 0))), null); qs = q2[0]; qe = q2[1]; }
-      else if (O.armT && O.armT[i] && !(gs.prone > .12) && !gr) { const R = 13, ax = O.armT[i][0], ay = O.armT[i][1]; // スティック右=巨人の右へ（モデルでは -x）
-        const Tt = A.sh.position.clone().add(new THREE.Vector3(-ax * R * .9, ay * R * .9 + 1, R * .75 * (1 - .25 * Math.abs(ay)))); const q2 = ikArm(A, Tt, null); qs = q2[0]; qe = q2[1]; }
+      else if (O.armT && O.armT[i] && !(gs.prone > .12) && !gr) { const R = 13, ax = O.armT[i][0], ay = O.armT[i][1], dp = O.armT[i][2]; // スティック右=巨人の右へ（モデルでは -x）。dp=手を前へ出す距離（なければ標準）
+        const Tt = A.sh.position.clone().add(new THREE.Vector3(-ax * R * .9, ay * R * .9 + 1, dp != null ? dp : R * .75 * (1 - .25 * Math.abs(ay)))); const q2 = ikArm(A, Tt, null); qs = q2[0]; qe = q2[1]; }
       else if (gs.prone > .12) { const q2 = ikArm(A, chest.worldToLocal(crawlHand(A, i)), pronePole(A)); qs = q2[0]; qe = q2[1]; }
       else if (ll >= 1) { const fl = gs.hph ? 1 : 0, fall = ll === 2 ? 1 : 0, aa = -.2 + .45 * gs.comp - 1.0 * fl - 1.1 * fall + Math.sin(tw * 7 + i * 2) * .15 * fall;
         qs = new THREE.Quaternion().setFromEuler(new THREE.Euler(aa, 0, A.s * (.5 + .5 * fl + Math.abs(gs.tilt) * .8 + .6 * fall))); qe = new THREE.Quaternion().setFromEuler(new THREE.Euler(-.55 - .5 * fl, 0, 0)); }
@@ -226,7 +236,7 @@ const ONL = (() => {
   addEventListener('contextmenu', e => { if (O.active) e.preventDefault(); });
   addEventListener('wheel', e => { if (O.active && isG() && !isPaused) { O.camD = Math.max(18, Math.min(220, O.camD + Math.sign(e.deltaY) * 6)); camSave(); } }, { passive: true });
   addEventListener('keydown', e => { if (!O.active || isPaused) return;
-    if (isG()) { if (e.code === 'Space') { actKick(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); else if (e.code === 'KeyV') vwToggle(); else if (e.code === 'KeyT') actRoar(); else if (e.code === 'KeyB') zoomToggle(); }
+    if (isG()) { if (e.code === 'Space') { actKick(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); else if (e.code === 'KeyV') vwToggle(); else if (e.code === 'KeyT') actRoar(); else if (e.code === 'KeyB') zoomToggle(); else if (e.code === 'KeyM') mapToggle(); }
     else if (O.dead && e.code === 'Tab') { O.specIdx++; e.preventDefault(); } });
   $$('specBtn').onclick = () => { O.specIdx++; };
 
@@ -237,7 +247,7 @@ const ONL = (() => {
   const TAP = [
     { el: bRun, down: bRun._down, up: bRun._up }, { el: bCrouch, down: bCrouch._down, up: bCrouch._up },
     { el: bKick, down: bKick._down, up: bKick._up }, { el: bGuard, down: bGuard._down, up: bGuard._up },
-    ...[bRoar, bZoom, bCamIn, bCamOut, bCamUp, bCamDn].map(b => ({ el: b, down: b._down, up: b._up })),
+    ...[bRoar, bZoom, bCamIn, bCamOut, bCamUp, bCamDn, bMap, bArmSel].map(b => ({ el: b, down: b._down, up: b._up })),
     { el: $$('pauseBtn'), down: () => togglePause() },
     { el: $$('vw'), down: () => { if (isG()) vwToggle(); else setView(!tp); } },
     ...['fire', 'rel', 'sbtn', 'gbtn'].map(id => ({ el: $$(id), down: () => synth($$(id), 'touchstart'), up: () => { synth($$(id), 'touchend'); } }))]; // 兵士用の既存ボタンは、元の処理にそのままイベントを渡す
@@ -294,12 +304,18 @@ const ONL = (() => {
 
   function giantStep(dt) {
     const o = GI[0]; useG(o); P.pitch = Math.max(-.9, Math.min(.5, P.pitch));
-    const c = Math.cos(P.yaw), sn = Math.sin(P.yaw);
     let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + joy.x, mz = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - joy.y; let l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
+    // スティックの基準角: 押している間は固定（視点を自動追従で回しても進路が曲がらない）。視点を手で回したら追従
+    const nowT = Date.now(), manual = O.expYaw != null && Math.abs(ad(P.yaw, O.expYaw)) > 1e-3; if (manual) O.manualT = nowT;
+    if (l < .15 || manual || O.basis == null) O.basis = P.yaw; const c = Math.cos(O.basis), sn = Math.sin(O.basis);
     const hold = [!!keys.KeyE, !!keys.KeyQ]; // PC: E=右腕, Q=左腕 を押しながら WASD
     // 腕の可動域: 外側へは大きく、体の内側へは 0.6 倍まで（反対側へ突き抜けない）、下方向は 0.75 倍まで。前方向（z>0）へのみ伸びるので背中側には回らない
     const armLimit = (i, ax, ay) => { const out = i === 0 ? 1 : -1; if (ax * out < 0) ax *= .6; if (ay < 0) ay *= .75; return [ax, ay]; };
-    if (O.armId != null && !O.grab) { const a = O.armStick, kk = Math.min(1, 14 * dt); a.sx += (a.x - a.sx) * kk; a.sy += (a.y - a.sy) * kk; O.armT = [armLimit(0, a.sx, a.sy), armLimit(1, a.sx, a.sy)]; } // 腕スティック: 両腕がスティックの向きへ
+    if (O.armId != null && !O.grab) { const a = O.armStick, kk = Math.min(1, 14 * dt); a.sx += (a.x - a.sx) * kk; a.sy += (a.y - a.sy) * kk; // 腕スティック: 向き=手の方向、倒し量=手を前へ伸ばす距離（ちょん押しで体の近く、全開で最大リーチ）
+      let ux = a.sx * O.armSens, uy = a.sy * O.armSens; const m0 = Math.hypot(ux, uy), dz0 = .08; let m = 0;
+      if (m0 > dz0) { m = Math.min(1, m0); const sc3 = (Math.min(1, m0) - dz0) / (1 - dz0) / m0; ux *= sc3; uy *= sc3; m = Math.hypot(ux, uy); if (m > 1) { ux /= m; uy /= m; m = 1; } } else { ux = 0; uy = 0; }
+      const dp = (6 + 8.5 * m) * (1 - .2 * Math.abs(uy)), pick = i => (O.armSel === 0 || (O.armSel === 1 && i === 0) || (O.armSel === 2 && i === 1)) ? armLimit(i, ux, uy).concat([dp]) : null;
+      O.armT = [pick(0), pick(1)]; }
     else if ((hold[0] || hold[1]) && !O.grab) { O.armT = hold.map((h, i) => h ? armLimit(i, mx, mz) : null); mx = 0; mz = 0; l = 0; } else O.armT = null;
     if (O.kickT > 0 && O.armId == null && !O.grab) O.armT = [[.9, .5], [-.9, .5]]; // 蹴りの予備動作: 両腕を広げて上げる（兵士に分かりやすく）
     if (O.kickT > 0) { mx = 0; mz = 0; l = 0; } // 蹴り中は動けない
@@ -314,9 +330,11 @@ const ONL = (() => {
     if (limbless) headG.rotation.y += (.6 * gs.limbSide - headG.rotation.y) * Math.min(1, 3 * dt);
     else { const ty = Math.max(-.7, Math.min(.7, ad(Math.atan2(-sn, -c), gs.yaw))); headG.rotation.y += (ty - headG.rotation.y) * Math.min(1, 8 * dt); }
     const canGo = moving && gs.stag <= 0 && !limbless && !O.guard && !O.grab; gs.mv = canGo; // 守り中・掴み中は動けない
-    const base = (gs.run > 0 ? tr.chaseSpeed : tr.walkSpeed) * (gs.hurt > 0 ? .45 : 1) * O.SPD_MUL * (gs.cq ? .5 : 1);
+    if (O.follow > 0 && canGo && !manual && !O.fp && nowT - (O.manualT || 0) > 1200) { const st2 = O.follow * 1.8 * dt; P.yaw += Math.max(-st2, Math.min(st2, ad(gs.yaw + Math.PI, P.yaw))); } // カメラ自動追従: 歩いている間、ゆっくり巨人の背後へ回り込む
+    O.expYaw = P.yaw;
+    const al = moving ? Math.max(0, Math.cos(Math.min(Math.abs(da), 1.4))) : 0, base = (gs.run > 0 ? tr.chaseSpeed : tr.walkSpeed) * (gs.hurt > 0 ? .45 : 1) * O.SPD_MUL * (gs.cq ? .5 : 1) * (.45 + .55 * al); // 向きが目標に近いほど速い（旋回しながら進める）
     if (legLoss === 0) {
-      G.position.y = 0; gs.spd = (gs.spd || 0) + ((canGo ? base : 0) - (gs.spd || 0)) * Math.min(1, (canGo ? 3.5 : 9) * dt);
+      G.position.y = 0; gs.spd = (gs.spd || 0) + ((canGo ? base : 0) - (gs.spd || 0)) * Math.min(1, (canGo ? 6 : 10) * dt);
       const v = gs.spd * dt; if (v > 1e-4) { G.position.x += Math.sin(gs.yaw) * v; G.position.z += Math.cos(gs.yaw) * v; pushOut(G.position, 4); gs.phase += v * 1.8 / (17.4 * (.42 + .33 * gs.rn) * G.scale.x); }
     } else updateLegless(dt, canGo, base);
     const gx = G.position.x, gz = G.position.z, fr = gs.prone > .5 ? 10 : 0, gx2 = gx + Math.sin(gs.yaw) * fr, gz2 = gz + Math.cos(gs.yaw) * fr;
@@ -324,7 +342,7 @@ const ONL = (() => {
     O.pose(o, dt);
   }
   function giantCam() { // 巨人の後ろ上方の三人称（視界は広め）/ Vで一人称（巨人の目線）
-    const o = GI[0]; useG(o); const sc = G.scale.x, fp = O.fp && isG(); head.visible = !fp;
+    const o = GI[0]; useG(o); const sc = G.scale.x, fp = O.fp && isG(); head.visible = !fp; headG.visible = !fp;
     if (fp) { const hp = headG.getWorldPosition(new THREE.Vector3()), cp = Math.cos(P.pitch), fx = -Math.sin(P.yaw) * cp, fz = -Math.cos(P.yaw) * cp, fy = Math.sin(P.pitch);
       cam.position.set(hp.x + fx * 2.5 * sc, hp.y + .8 * sc, hp.z + fz * 2.5 * sc); cam.lookAt(cam.position.x + fx * 10, cam.position.y + fy * 10, cam.position.z + fz * 10);
       if (cam.fov !== 82) { cam.fov = 82; cam.updateProjectionMatrix(); } sky.position.copy(cam.position); return; }
@@ -333,9 +351,18 @@ const ONL = (() => {
     cam.lookAt(T); if (cam.fov !== 74) { cam.fov = 74; cam.updateProjectionMatrix(); } sky.position.copy(cam.position);
   }
   // 名前タグ: カメラの位置が確定した後に、最新のカメラ行列で投影して配置する（以前は1フレーム前の行列でずれていた）
+  const gcfg = document.createElement('div'); gcfg.id = 'gcfg'; { const h = document.createElement('h4'); h.textContent = '巨人の操作設定'; gcfg.appendChild(h);
+    [['旋回の速さ', 'turn', 1, 5, .1, v => v.toFixed(1)], ['移動の速さ', 'spd', .6, 1.6, .05, v => v.toFixed(2)], ['腕スティック感度', 'arm', .6, 1.8, .05, v => v.toFixed(2)], ['カメラ追従', 'fol', 0, 1, .05, v => Math.round(v * 100) + '%']].forEach(([lb, k, mn, mx2, st, f]) => {
+      const row = document.createElement('div'); row.className = 'r'; const a = document.createElement('span'), inp = document.createElement('input'), val = document.createElement('span'); a.textContent = lb; val.className = 'v';
+      inp.type = 'range'; inp.min = mn; inp.max = mx2; inp.step = st; inp.value = cfg[k]; val.textContent = f(cfg[k]);
+      inp.addEventListener('input', () => { cfg[k] = +inp.value; val.textContent = f(cfg[k]); applyCfg(); try { localStorage.setItem('gvsGiantCfg', JSON.stringify(cfg)); } catch (e) {} });
+      row.append(a, inp, val); gcfg.appendChild(row); inp._sync = () => { inp.value = cfg[k]; val.textContent = f(cfg[k]); }; });
+    const rb2 = document.createElement('button'); rb2.className = 'b'; rb2.textContent = '初期値に戻す'; rb2.style.marginTop = '4px';
+    rb2.addEventListener('click', () => { cfg = Object.assign({}, CFG_DEF); applyCfg(); gcfg.querySelectorAll('input').forEach(i => i._sync()); try { localStorage.setItem('gvsGiantCfg', JSON.stringify(cfg)); } catch (e) {} }); gcfg.appendChild(rb2);
+    const po = document.getElementById('pauseOv'); if (po) po.appendChild(gcfg); }
   const V2 = new THREE.Vector3(); let mmT = 0;
   function mapStep(rdt) { // 巨人用ミニマップ: 画面の上方向=カメラの向き。家・兵士（色・高さ）・蹴りの範囲を表示
-    const show = isG() && !over; mm.style.display = show ? 'block' : 'none'; kf.style.left = show ? (mmS + 20) + 'px' : '8px'; kf.style.top = show ? '56px' : '96px'; if (!show) return;
+    const show = isG() && !over && PREF.map; mm.style.display = show ? 'block' : 'none'; kf.style.left = show ? (mmS + 20) + 'px' : '8px'; kf.style.top = show ? '56px' : '96px'; if (!show) return;
     mmT += rdt; if (mmT < .08) return; mmT = 0;
     const o = GI[0], gp = o.G.position, sc = o.G.scale.x, dir = cam.getWorldDirection(new THREE.Vector3()); let fx = dir.x, fz = dir.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
     const half = mmS / 2, RM = 130, k = (half - 3) / RM, c = mmc; c.clearRect(0, 0, mmS, mmS); c.save(); c.beginPath(); c.arc(half, half, half - 1, 0, 6.283); c.clip();
@@ -528,7 +555,7 @@ const ONL = (() => {
       O.acc = 0;
       if (giant) { const o = GI[0]; useG(o); const hnd = arms.map((A, i) => gs.parts[i === 0 ? 'leftArm' : 'rightArm'].severed ? null : A.wr.getWorldPosition(new THREE.Vector3()).toArray().map(r2)); // 手のワールド位置（掴み判定用）
         NET.send({ t: 'state', cq: gs.cq ? 1 : 0, hnd, p: [r2(G.position.x), r2(G.position.y), r2(G.position.z)], yaw: r2(gs.yaw), hy: r2(gs.yaw + headG.rotation.y), sp: r2(gs.spd || 0), run: gs.run > 0 ? 1 : 0,
-        sc: G.scale.x, hd: r2(headG.rotation.y), nh: r2(nape.getWorldPosition(V).y - G.position.y), ar: O.armT ? O.armT.map(a => a ? [r2(a[0]), r2(a[1])] : null) : null, limbs: LIMB_KEYS.map(k => gs.parts[k].severed ? 1 : 0) }); }
+        sc: G.scale.x, hd: r2(headG.rotation.y), nh: r2(nape.getWorldPosition(V).y - G.position.y), ar: O.armT ? O.armT.map(a => a ? [r2(a[0]), r2(a[1]), a[2] == null ? null : r2(a[2])] : null) : null, limbs: LIMB_KEYS.map(k => gs.parts[k].severed ? 1 : 0) }); }
       else NET.send({ t: 'state', p: [r2(P.pos.x), r2(P.pos.y), r2(P.pos.z)], yaw: r2(P.yaw), pitch: r2(P.pitch), v: [r2(P.vel.x), r2(P.vel.y), r2(P.vel.z)],
         w: WIRES.map(w => w.a ? aw(w.a, V).toArray().map(r2) : (w.fly ? w.fly.pos.toArray().map(r2) : null)),
         f: (P.stuck ? 1 : 0) | (P.gr ? 2 : 0) | (P.dash ? 4 : 0) | (P.slash ? 8 : 0), g: r2(P.gasAmt || 0) });
@@ -588,7 +615,7 @@ const ONL = (() => {
     O.zk += ((O.zoomOn ? .45 : 1) - O.zk) * Math.min(1, 6 * realDt);
     if (giant) giantCam(); else if (O.dead && !over) specCam();
     if (over && O.cineUntil && Date.now() < O.cineUntil) cineCam(realDt);
-    tagStep(); mapStep(realDt);
+    tagStep(); mapStep(realDt); gcfg.style.display = (O.active && isG()) ? 'block' : 'none';
   };
   addEventListener('click', e => { if (O.dead && !over && !(e.target.closest && e.target.closest('button'))) O.specIdx++; });
   NET.on('start', m => {
