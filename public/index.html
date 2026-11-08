@@ -213,8 +213,8 @@ const fc=document.createElement('canvas');fc.width=fc.height=256;{const g=fc.get
 const ft=new THREE.CanvasTexture(fc);ft.wrapS=ft.wrapT=THREE.RepeatWrapping;
 const TC={},chMat=new THREE.MeshStandardMaterial({color:0x5a3a30,roughness:1});
 const buildingList=[];
-const PLAZAS=[[160,160,66],[-160,-96,66],[-128,192,60],[192,-160,60]];
-for(let gi=0;gi<361;gi++){const px=(gi%19-9)*32,pz=((gi/19|0)-9)*32;if(Math.hypot(px,pz)<48||Math.hypot(px,pz-60)<20||PLAZAS.some(q=>Math.hypot(px-q[0],pz-q[1])<q[2])||rnd()<.05)continue;const w=19+rnd()*2,h=8+rnd()*14+(Math.hypot(px,pz)<90?rnd()*10:0),rh=w*.38;
+const PLAZAS=[]; // 広場は撤去
+for(let gi=0;gi<361;gi++){const px=(gi%19-9)*32,pz=((gi/19|0)-9)*32;if(Math.hypot(px,pz)<40||Math.hypot(px,pz-60)<20||rnd()<.5)continue; // 家は約半分に間引きconst w=19+rnd()*2,h=8+rnd()*14+(Math.hypot(px,pz)<90?rnd()*10:0),rh=w*.38;
  const kx=Math.max(1,Math.round(w/5)),ky=Math.max(1,Math.round(h/5)),kk=kx+'_'+ky;let tx=TC[kk];if(!tx){tx=ft.clone();tx.needsUpdate=true;tx.repeat.set(kx,ky);TC[kk]=tx;}
  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,w),new THREE.MeshStandardMaterial({map:tx,color:new THREE.Color().setHSL(.08+rnd()*.05,.2,.55+rnd()*.25),roughness:.9}));
  m.position.set(px,h/2,pz);m.castShadow=m.receiveShadow=true;S.add(m);
@@ -253,19 +253,7 @@ function addPond(x,z,R){addM(new THREE.CylinderGeometry(R+1.2,R+1.4,1,32),darkSt
 const TREES=[[],[],[]];
 function addTree(x,z,kind){const s=.8+rnd()*.7;TREES[kind].push([x,z,s,rnd()*6.28]);PROPS.push({x,z,r:1.1*s,h:11*s});if(kind==2)PROPS.push({x,z,r:3.8*s,y0:7*s,h:24*s});else PROPS.push({x,z,r:5.3*s,y0:10*s,h:21.5*s});}
 function ringTrees(x,z,r,n,off){for(let i=0;i<n;i++){const a=off+i/n*6.2832+(rnd()-.5)*.15;addTree(x+Math.cos(a)*r,z+Math.sin(a)*r,i%3==2?2:i%2);}}
-// 噴水広場(中央)
-addPlaza(0,0,29);addFountain(0,0,9.5);
-for(let i=0;i<6;i++){const a=i/6*6.2832+.3;addBench(Math.cos(a)*17,Math.sin(a)*17,-a-Math.PI/2);}
-for(let i=0;i<4;i++){const a=i/4*6.2832+.78;addLamp(Math.cos(a)*23,Math.sin(a)*23);}
-ringTrees(0,0,26.5,10,.2);
-// 時計塔の広場
-{const [x,z]=PLAZAS[0];addPlaza(x,z,46);addTower(x,z,16,86);for(let i=0;i<4;i++){const a=i/4*6.2832+.78;addLamp(x+Math.cos(a)*14,z+Math.sin(a)*14);}for(let i=0;i<6;i++){const a=i/6*6.2832;addBench(x+Math.cos(a)*24,z+Math.sin(a)*24,-a-Math.PI/2);}ringTrees(x,z,38,16,0);}
-// 公園(池と森)
-{const [x,z]=PLAZAS[1];addPlaza(x,z,46);addPond(x,z,13);for(let i=0;i<30;i++){const a=rnd()*6.2832,d=20+rnd()*22;addTree(x+Math.cos(a)*d,z+Math.sin(a)*d,i%3==0?2:i%2);}for(let i=0;i<4;i++){const a=i/4*6.2832+.78;addBench(x+Math.cos(a)*19,z+Math.sin(a)*19,-a-Math.PI/2);}}
-// 見張り塔とオベリスクの広場
-{const [x,z]=PLAZAS[2];addPlaza(x,z,42);addObelisk(x,z);addTower(x-28,z-6,11,58);addTower(x+28,z+6,11,66);for(let i=0;i<4;i++){const a=i/4*6.2832+.4;addLamp(x+Math.cos(a)*12,z+Math.sin(a)*12);}ringTrees(x,z,34,10,.5);}
-// 小噴水と塔の広場
-{const [x,z]=PLAZAS[3];addPlaza(x,z,42);addFountain(x,z,6.5);addTower(x+30,z-24,13,72);for(let i=0;i<4;i++){const a=i/4*6.2832+.78;addBench(x+Math.cos(a)*14,z+Math.sin(a)*14,-a-Math.PI/2);}ringTrees(x,z,34,12,0);}
+// 広場は撤去（視界を良くするため）
 // 外壁ぞいの並木
 for(let t=-300;t<=300;t+=15){if(Math.abs(t)<24)continue;for(const sg of[-1,1]){const d=sg*(311+rnd()*11);addTree(t+(rnd()-.5)*6,d,rnd()<.3?2:rnd()<.5?0:1);addTree(d,t+(rnd()-.5)*6,rnd()<.3?2:rnd()<.5?0:1);}}
 {const trunkG=new THREE.CylinderGeometry(.6,.95,10,8),crA=new THREE.IcosahedronGeometry(6.4,1),conG=new THREE.ConeGeometry(5,17,9);
@@ -1976,7 +1964,7 @@ const dx=P.pos.x-G.position.x,dz=P.pos.z-G.position.z,dist=Math.hypot(dx,dz);
  const fv=Math.min(P.vel.length(),50)*.4;if(Math.abs(cam.fov-(70+fv))>.1){cam.fov+=(70+fv-cam.fov)*.1;cam.updateProjectionMatrix();}
  cam.updateMatrixWorld(true);
  updTrails(dt);updWind(dt);audioUpdate(dt);updArrows();drawMinimap(dt);updEnv(dt);updRain(dt);rainSnd(!over);updMission(dt);
- S.fog.density=ENVC.fog/(1+Math.max(0,cam.position.y-30)/45); // 高いところ(屋根や外壁の上)からは霧を薄くして街が見渡せるようにする
+ S.fog.density=ENVC.fog*(window.ONL&&ONL.active?.5:1)/(1+Math.max(0,cam.position.y-30)/45); // 高いところ(屋根や外壁の上)からは霧を薄くして街が見渡せるようにする
  for(const w of WIRES){
   const on=(!!w.a||!!w.fly)&&!over;w.line.visible=on;w.claw.visible=on;
   if(on){
