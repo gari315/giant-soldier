@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-08b'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-09a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -76,7 +76,7 @@ const ONL = (() => {
   const O = { active: false, snaps: [], off: null, rem: new Map(), acc: 0, me: null, DELAY: 100, SEND_HZ: 20, FIG: null, FEET: 0, runBtn: false, guard: false,
     TURN_MUL: 1.6, SPD_MUL: 1,                                            // 巨人の旋回・速度の調整用
     GRAB_REACH: 12, KICK_R: 16, KICK_H: 22, KICK_T: 1.6, KICK_HIT: 1.13, crouchBtn: false, grabTry: 0, ROAR_CD: 14000, kickT: 0, roarUntil: 0, roarMouth: 0, armId: null, armStick: { x: 0, y: 0, sx: 0, sy: 0 },         // サーバー(server.js の C)と合わせる
-    grab: null, camD: 72, camH: 12, camBtn: { d: 0, h: 0 }, armT: null, guardUntil: 0, cd: { roar: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
+    grab: null, camD: 60, camH: 12, zoomOn: false, zk: 1, camBtn: { d: 0, h: 0 }, armT: null, guardUntil: 0, cd: { roar: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
   const $$ = id => document.getElementById(id);
   try { const j = JSON.parse(localStorage.getItem('gvsGiantCam') || 'null'); if (j) { O.camD = Math.max(18, Math.min(220, +j.d || 72)); O.camH = Math.max(-10, Math.min(90, isNaN(+j.h) ? 12 : +j.h)); } } catch (e) {}
   const camSave = () => { try { localStorage.setItem('gvsGiantCam', JSON.stringify({ d: O.camD, h: O.camH })); } catch (e) {} };
@@ -88,6 +88,8 @@ const ONL = (() => {
 .gbt.on{background:#d9822bdd;border-color:#fff}.gbt.cd{opacity:.5}
 #joyA{position:fixed;z-index:4;display:none;border-radius:50%;background:#fff1;border:2px solid #fff4;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}#joyA b{position:absolute;width:38%;height:38%;left:31%;top:31%;border-radius:50%;background:#fff6}#joyA.on{background:#ffb04033;border-color:#ffd28a}#joyA i{position:absolute;left:0;right:0;top:-17px;text-align:center;font:700 11px sans-serif;font-style:normal;color:#fffc;text-shadow:0 1px 2px #000}.ntag.rev{color:#ff9a8a;font-size:16px}
 #deathBn{position:fixed;left:50%;top:30%;transform:translate(-50%,-50%);z-index:7;text-align:center;pointer-events:none;display:none;color:#fff;text-shadow:0 2px 8px #000;max-width:88vw}#deathBn h2{margin:0 0 8px;font:900 clamp(26px,7vw,52px) "Noto Serif JP",serif;color:#ff6a5a;letter-spacing:.08em}#deathBn p{margin:3px 0;font:700 clamp(12px,3.2vw,16px) "Noto Serif JP",serif;background:#000b;padding:4px 10px;border-radius:8px;display:inline-block}
+#hitFlash{position:fixed;inset:0;z-index:6;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 50%,#ff2a1a00 25%,#ff2a1acc 100%)}#hitFlash.w{background:radial-gradient(circle at 50% 50%,#ffffff55 0%,#fffffff0 100%)}
+#mm{position:fixed;left:8px;top:56px;z-index:3;display:none;pointer-events:none;border-radius:50%;border:2px solid #fff6;background:#0009}.nring{position:fixed;z-index:1;pointer-events:none;display:none;border:2px solid #ffb454;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 6px #000,0 0 8px currentColor inset}
 #kf{position:fixed;left:8px;top:96px;z-index:3;pointer-events:none;font:700 12px sans-serif;color:#fff;text-shadow:0 1px 3px #000}#kf div{background:#000a;margin:2px 0;padding:2px 8px;border-radius:6px;width:fit-content}
 #pauseBtn,#vw,#lockRetry{z-index:20!important}
 @media (pointer:coarse){html,body{position:fixed!important;inset:0;width:100%;height:100%;overflow:hidden!important;overscroll-behavior:none}}
@@ -109,16 +111,20 @@ const ONL = (() => {
   const bKick = mkBtn('gKick', '蹴り', 14, 24, v => { if (v) actKick(); });
   const bGuard = mkBtn('gGuard', 'うなじ守り', 14, 24, v => { if (v) actGuard(); });
   const bRoar = mkBtn('gRoar', '咆哮', 14, 24, v => { if (v) actRoar(); });
+  const bZoom = mkBtn('gZoom', '寄る', 14, 24, v => { if (v) zoomToggle(); });
+  const zoomToggle = () => { O.zoomOn = !O.zoomOn; bZoom.classList.toggle('on', O.zoomOn); toast(O.zoomOn ? 'カメラを寄せました（もう一度で戻る）' : 'カメラを戻しました'); };
   const bCamIn = mkBtn('gCamIn', '拡', 0, 0, v => { O.camBtn.d = v ? -1 : 0; }, 'sm', 50);
   const bCamOut = mkBtn('gCamOut', '縮', 0, 0, v => { O.camBtn.d = v ? 1 : 0; }, 'sm', 50);
   const bCamUp = mkBtn('gCamUp', '上', 0, 0, v => { O.camBtn.h = v ? 1 : 0; }, 'sm', 50);
   const bCamDn = mkBtn('gCamDn', '下', 0, 0, v => { O.camBtn.h = v ? -1 : 0; }, 'sm', 50);
+  const mm = document.createElement('canvas'); mm.id = 'mm'; document.body.appendChild(mm); let mmS = 100; const mmc = mm.getContext('2d');
   const aj = document.createElement('div'); aj.id = 'joyA'; aj.innerHTML = '<i>腕</i><b></b>'; document.body.appendChild(aj); const ajThumb = aj.querySelector('b'); // 腕スティック（右下）
-  const GBTN = [bRun, bCrouch, bKick, bGuard, bRoar, bCamIn, bCamOut, bCamUp, bCamDn, aj];
+  const GBTN = [bRun, bCrouch, bKick, bGuard, bRoar, bZoom, bCamIn, bCamOut, bCamUp, bCamDn, aj];
   function layout() { // 画面の高さに合わせてボタンと腕スティックを配置（横向きスマホでも重ならないように）
     const H = innerHeight, u = Math.round(Math.max(52, Math.min(78, H * .17))), g = 8, r0 = 14, b0 = 24, D = Math.round(Math.max(88, Math.min(124, H * .28)));
     const place = (b, col, row) => { b.style.width = b.style.height = u + 'px'; b.style.right = (r0 + col * (u + g)) + 'px'; b.style.bottom = (b0 + row * (u + g)) + 'px'; b.style.top = 'auto'; b.style.fontSize = u < 64 ? '11px' : '13px'; };
-    place(bRun, 0, 0); place(bCrouch, 1, 0); place(bRoar, 2, 0); place(bKick, 0, 1); place(bGuard, 1, 1);
+    place(bRun, 0, 0); place(bCrouch, 1, 0); place(bRoar, 2, 0); place(bKick, 0, 1); place(bGuard, 1, 1); place(bZoom, 2, 1);
+    mm.width = mm.height = mmS = Math.round(Math.max(84, Math.min(120, H * .26))); mm.style.width = mm.style.height = mmS + 'px';
     aj.style.width = aj.style.height = D + 'px'; aj.style.right = (r0 + (2 * u + g - D) / 2) + 'px'; aj.style.bottom = (b0 + 2 * (u + g) + 6) + 'px';
     [bCamDn, bCamUp, bCamOut, bCamIn].forEach((b, k) => { b.style.width = b.style.height = '40px'; b.style.right = (8 + k * 46) + 'px'; b.style.top = '50px'; b.style.bottom = 'auto'; });
   }
@@ -196,7 +202,7 @@ const ONL = (() => {
     if (O.grab || O.dead || over || isPaused) return; const now = Date.now(); if (now - O.grabTry < 150) return;
     const o = GI[0]; useG(o); const sc = G.scale.x, hp = new THREE.Vector3(); let best = null, bd = 1e9;
     arms.forEach((A, i) => { if (gs.parts[i === 0 ? 'leftArm' : 'rightArm'].severed) return; A.wr.getWorldPosition(hp);
-      O.rem.forEach((r, id) => { if (!r.mesh.visible || !r.tp) return; const d = Math.hypot(hp.x - r.tp[0], hp.y - (r.tp[1] - 1.05), hp.z - r.tp[2]); if (d < 4 * sc && d < bd) { bd = d; best = id; } }); });
+      O.rem.forEach((r, id) => { if (!r.mesh.visible || !r.tp) return; const d = Math.hypot(hp.x - r.tp[0], hp.y - r.cy, hp.z - r.tp[2]); if (d < 4 * sc && d < bd) { bd = d; best = id; } }); });
     if (best) { O.grabTry = now; NET.send({ t: 'event', k: 'grab', id: best }); }
   }
   function actKick() { // 蹴り: 周囲すべて（全方向）が対象。クールダウンなし（モーション中は連打不可）。脚を失うと蹴れない
@@ -220,7 +226,7 @@ const ONL = (() => {
   addEventListener('contextmenu', e => { if (O.active) e.preventDefault(); });
   addEventListener('wheel', e => { if (O.active && isG() && !isPaused) { O.camD = Math.max(18, Math.min(220, O.camD + Math.sign(e.deltaY) * 6)); camSave(); } }, { passive: true });
   addEventListener('keydown', e => { if (!O.active || isPaused) return;
-    if (isG()) { if (e.code === 'Space') { actKick(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); else if (e.code === 'KeyV') vwToggle(); else if (e.code === 'KeyT') actRoar(); }
+    if (isG()) { if (e.code === 'Space') { actKick(); e.preventDefault(); } else if (e.code === 'KeyC') actGuard(); else if (e.code === 'KeyV') vwToggle(); else if (e.code === 'KeyT') actRoar(); else if (e.code === 'KeyB') zoomToggle(); }
     else if (O.dead && e.code === 'Tab') { O.specIdx++; e.preventDefault(); } });
   $$('specBtn').onclick = () => { O.specIdx++; };
 
@@ -231,7 +237,7 @@ const ONL = (() => {
   const TAP = [
     { el: bRun, down: bRun._down, up: bRun._up }, { el: bCrouch, down: bCrouch._down, up: bCrouch._up },
     { el: bKick, down: bKick._down, up: bKick._up }, { el: bGuard, down: bGuard._down, up: bGuard._up },
-    ...[bRoar, bCamIn, bCamOut, bCamUp, bCamDn].map(b => ({ el: b, down: b._down, up: b._up })),
+    ...[bRoar, bZoom, bCamIn, bCamOut, bCamUp, bCamDn].map(b => ({ el: b, down: b._down, up: b._up })),
     { el: $$('pauseBtn'), down: () => togglePause() },
     { el: $$('vw'), down: () => { if (isG()) vwToggle(); else setView(!tp); } },
     ...['fire', 'rel', 'sbtn', 'gbtn'].map(id => ({ el: $$(id), down: () => synth($$(id), 'touchstart'), up: () => { synth($$(id), 'touchend'); } }))]; // 兵士用の既存ボタンは、元の処理にそのままイベントを渡す
@@ -268,6 +274,9 @@ const ONL = (() => {
   function ring() { const sc = GI[0].G.scale.x, m = new THREE.Mesh(new THREE.RingGeometry(.9, 1.3, 48), new THREE.MeshBasicMaterial({ color: 0xffe2a8, transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false }));
     m.rotation.x = -Math.PI / 2; m.position.set(GI[0].G.position.x, .5, GI[0].G.position.z); S.add(m); O.fx.push({ m, t: 0, R: (O.KICK_R || 16) * sc }); }
   function fxStep(dt) {
+    const wf = O.waveFx; if (wf) { wf.t += dt; const k = Math.min(1, wf.t / .35), e = 1 - (1 - k) * (1 - k); // 衝撃波: 約0.35秒で全範囲に広がる（ドームの高さ=当たる高さ）
+      wf.wr.scale.setScalar(Math.max(.01, wf.R * e)); wf.wr.material.opacity = 1 - .85 * k; wf.dome.scale.set(Math.max(.01, wf.R * e), Math.max(.01, wf.H * e), Math.max(.01, wf.R * e)); wf.dome.material.opacity = .45 * (1 - k);
+      if (wf.t > .6) { S.remove(wf.wr); S.remove(wf.dome); O.waveFx = null; } }
     { // 巨人の手の危険範囲（触れると掴まれる半径）を赤い光で表示。兵士が近づくと強く光る
       if (!O.halo) O.halo = [0, 1].map(() => { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: 0xff5a3a, transparent: true, opacity: .2, depthWrite: false })); m.visible = false; m.renderOrder = 5; S.add(m); return m; });
       const o0 = GI[0], sc0 = o0.G.scale.x, tp = Date.now() / 1000, vis = O.active && !over && o0.G.visible && !o0.gs.dead && !O.giantDead;
@@ -319,22 +328,39 @@ const ONL = (() => {
     if (fp) { const hp = headG.getWorldPosition(new THREE.Vector3()), cp = Math.cos(P.pitch), fx = -Math.sin(P.yaw) * cp, fz = -Math.cos(P.yaw) * cp, fy = Math.sin(P.pitch);
       cam.position.set(hp.x + fx * 2.5 * sc, hp.y + .8 * sc, hp.z + fz * 2.5 * sc); cam.lookAt(cam.position.x + fx * 10, cam.position.y + fy * 10, cam.position.z + fz * 10);
       if (cam.fov !== 82) { cam.fov = 82; cam.updateProjectionMatrix(); } sky.position.copy(cam.position); return; }
-    const T = new THREE.Vector3(G.position.x, 24 * sc, G.position.z), cp = Math.cos(P.pitch), dist = O.camD * sc;
+    const T = new THREE.Vector3(G.position.x, 24 * sc, G.position.z), cp = Math.cos(P.pitch), dist = Math.max(22, O.camD * O.zk) * sc;
     cam.position.set(T.x + Math.sin(P.yaw) * cp * dist, Math.max(4, T.y - Math.sin(P.pitch) * dist + O.camH * sc), T.z + Math.cos(P.yaw) * cp * dist);
     cam.lookAt(T); if (cam.fov !== 74) { cam.fov = 74; cam.updateProjectionMatrix(); } sky.position.copy(cam.position);
   }
   // 名前タグ: カメラの位置が確定した後に、最新のカメラ行列で投影して配置する（以前は1フレーム前の行列でずれていた）
+  const V2 = new THREE.Vector3(); let mmT = 0;
+  function mapStep(rdt) { // 巨人用ミニマップ: 画面の上方向=カメラの向き。家・兵士（色・高さ）・蹴りの範囲を表示
+    const show = isG() && !over; mm.style.display = show ? 'block' : 'none'; kf.style.left = show ? (mmS + 20) + 'px' : '8px'; kf.style.top = show ? '56px' : '96px'; if (!show) return;
+    mmT += rdt; if (mmT < .08) return; mmT = 0;
+    const o = GI[0], gp = o.G.position, sc = o.G.scale.x, dir = cam.getWorldDirection(new THREE.Vector3()); let fx = dir.x, fz = dir.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
+    const half = mmS / 2, RM = 130, k = (half - 3) / RM, c = mmc; c.clearRect(0, 0, mmS, mmS); c.save(); c.beginPath(); c.arc(half, half, half - 1, 0, 6.283); c.clip();
+    c.save(); c.setTransform(-fz * k, -fx * k, fx * k, -fz * k, half, half);
+    c.fillStyle = '#6a625a'; for (const b of buildingList) { if (b.destroyed) continue; const dx = b.px - gp.x, dz = b.pz - gp.z; if (Math.abs(dx) > RM * 1.5 || Math.abs(dz) > RM * 1.5) continue; c.fillRect(dx - b.w / 2, dz - b.w / 2, b.w, b.w); }
+    c.restore();
+    c.strokeStyle = '#ff6a4a99'; c.lineWidth = 1; c.beginPath(); c.arc(half, half, O.KICK_R * sc * k, 0, 6.283); c.stroke(); // 蹴りの範囲
+    O.rem.forEach(r => { if (!r.tvis || !r.mesh.visible || !r.rp) return; let dx = r.rp[0] - gp.x, dz = r.rp[2] - gp.z, sx = -fz * dx + fx * dz, sy = -fx * dx - fz * dz; const dd = Math.hypot(sx, sy), lim = half - 5; let rad = 3 + (r.cy > 25 ? 1.5 : 0);
+      if (dd * k > lim) { sx = sx / dd * lim / k; sy = sy / dd * lim / k; rad = 2.2; } c.fillStyle = r.col || '#ffd24a'; c.beginPath(); c.arc(half + sx * k, half + sy * k, rad, 0, 6.283); c.fill(); if (r.cy > 25) { c.strokeStyle = '#fff'; c.lineWidth = 1; c.stroke(); } }); // 高い所にいる兵士は白縁つき
+    const gx = Math.sin(o.gs.yaw), gz = Math.cos(o.gs.yaw), ax = -fz * gx + fx * gz, ay = -fx * gx - fz * gz, px = -ay, py = ax; // 巨人（向きの三角）
+    c.fillStyle = '#ff4a3a'; c.beginPath(); c.moveTo(half + ax * 7, half + ay * 7); c.lineTo(half - ax * 4 + px * 4.5, half - ay * 4 + py * 4.5); c.lineTo(half - ax * 4 - px * 4.5, half - ay * 4 - py * 4.5); c.closePath(); c.fill(); c.restore();
+  }
   function tagStep() {
     const cv = (typeof R !== 'undefined' && R.domElement) ? R.domElement.getBoundingClientRect() : null, W = (cv && cv.width) || innerWidth, H = (cv && cv.height) || innerHeight, L0 = cv ? cv.left : 0, T0 = cv ? cv.top : 0, giant = isG();
     cam.updateMatrixWorld(true); const gp = GI[0].G.position, tnow = Date.now();
     O.rem.forEach(r => {
-      const tg = r.tag; if (!r.tvis || !r.mesh.visible || !r.tp) { tg.style.display = 'none'; return; }
-      const dc = Math.hypot(r.tp[0] - cam.position.x, r.tp[2] - cam.position.z); if (dc > 300 && !giant) { tg.style.display = 'none'; return; }
+      const tg = r.tag; if (!r.tvis || !r.mesh.visible || !r.tp) { tg.style.display = 'none'; if (r.ring) r.ring.style.display = 'none'; return; }
+      const dc = Math.hypot(r.tp[0] - cam.position.x, r.tp[2] - cam.position.z); if (dc > 300 && !giant) { tg.style.display = 'none'; if (r.ring) r.ring.style.display = 'none'; return; }
       V.set(r.tp[0], r.tp[1], r.tp[2]).project(cam); let x = V.x, y = V.y; const behind = V.z > 1, out = behind || Math.abs(x) > .94 || Math.abs(y) > .9; let arrow = '';
-      if (out) { if (!giant) { tg.style.display = 'none'; return; } // 巨人側: 画面外の兵士は端に矢印つきで表示して位置を見失わない
+      if (out) { if (r.ring) r.ring.style.display = 'none'; if (!giant) { tg.style.display = 'none'; return; } // 巨人側: 画面外の兵士は端に矢印つきで表示して位置を見失わない
         if (behind) { x = -x; y = -y; } if (Math.abs(x) < .001 && Math.abs(y) < .001) y = -1;
         const s = Math.max(Math.abs(x) / .9, Math.abs(y) / .82); x /= s; y /= s; arrow = Math.abs(x) / .9 > Math.abs(y) / .82 ? (x < 0 ? '◀ ' : '▶ ') : (y > 0 ? '▲ ' : '▼ '); }
-      const dg = Math.round(Math.hypot(r.tp[0] - gp.x, r.tp[2] - gp.z));
+      const dg = Math.round(Math.hypot(r.tp[0] - gp.x, r.tp[2] - gp.z)), rg = r.ring || (r.ring = (() => { const e = document.createElement('div'); e.className = 'nring'; document.body.appendChild(e); return e; })());
+      if (!out && (giant || dc > 30)) { V2.set(r.rp[0], r.rp[1], r.rp[2]).project(cam); const sz = giant ? 40 : 30; rg.style.display = 'block'; rg.style.width = rg.style.height = sz + 'px'; rg.style.borderColor = r.col || '#ffb454'; rg.style.color = r.col || '#ffb454';
+        rg.style.left = (L0 + (V2.x * .5 + .5) * W) + 'px'; rg.style.top = (T0 + (-V2.y * .5 + .5) * H) + 'px'; } else rg.style.display = 'none';
       tg.style.display = 'block'; tg.className = 'ntag' + (r.tc ? '' : ' off') + (giant ? ' big' : '') + (giant && tnow < O.roarUntil ? ' rev' : '') + (out ? ' edge' : '');
       tg.textContent = arrow + r.tn + (giant ? '  ' + dg + 'm' : '');
       tg.style.left = (L0 + (x * .5 + .5) * W) + 'px'; tg.style.top = (T0 + (-y * .5 + .5) * H) + 'px';
@@ -364,6 +390,9 @@ const ONL = (() => {
   // ---- やられた原因の表示（本人: 画面中央の大きな表示 / 全員: 左上のキルログ）----
   const deathBn = document.createElement('div'); deathBn.id = 'deathBn'; document.body.appendChild(deathBn); let deathT = 0;
   const kf = document.createElement('div'); kf.id = 'kf'; document.body.appendChild(kf);
+  const hf = document.createElement('div'); hf.id = 'hitFlash'; document.body.appendChild(hf);
+  function flash(white) { hf.className = white ? 'w' : ''; hf.style.transition = 'none'; hf.style.opacity = white ? '.95' : '.9'; void hf.offsetWidth; hf.style.transition = 'opacity ' + (white ? 1.1 : .8) + 's ease-out'; hf.style.opacity = '0'; }
+  const slowmo = sec => { try { limbCutSlowMoTimer = Math.max(limbCutSlowMoTimer, sec); } catch (e) {} }; // 既存のスローモーション（世界の時間が 0.2 倍）
   const CAUSE = { kick: ['蹴り飛ばされた', '🦵 蹴り'], eat: ['食べられた', '🍖 食べられた'], left: ['退出した', '🚪 退出'] };
   function deathInfo(by) { // 本人向け: 何が起きたか・自分の状況・次の対策
     useG(GI[0]); const sc = G.scale.x, gd = Math.round(Math.hypot(P.pos.x - G.position.x, P.pos.z - G.position.z)), h = Math.round(P.pos.y - G.position.y);
@@ -376,9 +405,11 @@ const ONL = (() => {
   function killFeed(id, by) { const c = CAUSE[by]; if (!c) return; const d = document.createElement('div'); d.textContent = nameOf(id) + '  ' + c[1]; kf.appendChild(d); while (kf.children.length > 4) kf.removeChild(kf.firstChild); setTimeout(() => d.remove(), 6000); }
   function onDead(id, by) {
     if (O.grab && O.grab.id === id) endGrab(by === 'eat');
-    if (by === 'kick') { const r = O.rem.get(id); if (r) { for (let q = 0; q < 3; q++) spark(r.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xaa1010); } }
+    const dly = by === 'kick' ? ((O.kickDelay && O.kickDelay[id]) || 0) : 0; // 蹴りの衝撃波が兵士に届くまでの時間
+    if (by === 'kick') setTimeout(() => { const r = O.rem.get(id); if (r) { for (let q = 0; q < 4; q++) spark(r.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xaa1010); } }, dly * 1000);
     killFeed(id, by);
-    if (id === NET.id) { showDeath(by); O.dead = true; P.eaten = true; P.vel.set(0, 0, 0); fig.visible = false; releaseWires(); O.specIdx = 0; $$('specBar').style.display = 'flex'; }
+    if (id === NET.id) { O.dead = true; P.eaten = true; P.vel.set(0, 0, 0); releaseWires(); O.specIdx = 0; $$('specBar').style.display = 'flex';
+      setTimeout(() => { fig.visible = false; if (by === 'kick') { flash(false); shake = Math.max(shake, 1.2); slowmo(1.4); } showDeath(by); }, dly * 1000); } // 蹴り: 波が届いた瞬間に赤フラッシュ・揺れ・スロー → 原因表示。観戦は巨人視点
   }
   function kick() { // 蹴り: 予備動作（約1.1秒）→ 蹴り出し → 全方向の衝撃波。予備動作中は足元に赤い危険範囲を表示
     O.kickT = O.KICK_T; useG(GI[0]); const sc = G.scale.x, R = O.KICK_R * sc, gd = Math.hypot(P.pos.x - G.position.x, P.pos.z - G.position.z), near = gd < 90 || isG();
@@ -389,7 +420,10 @@ const ONL = (() => {
     if (!isG() && !O.dead && gd < R * 2.5) popup('⚠ 巨人が蹴りの構え！ 赤い円の外へ逃げろ', 'big');
     setTimeout(() => { ring(); for (let q = 0; q < 24; q++) { const a = q / 24 * 6.283, r = (6 + Math.random() * 8) * sc;
       steam.emit(new THREE.Vector3(G.position.x + Math.cos(a) * r, .6 + Math.random() * 3, G.position.z + Math.sin(a) * r), new THREE.Vector3(Math.cos(a) * 12, 3 + Math.random() * 4, Math.sin(a) * 12), 1.6, 10); }
-      spark(new THREE.Vector3(G.position.x, 1, G.position.z), 0xddaa77); shake = Math.max(shake, near ? 1 : .3); }, O.KICK_HIT * 1000);
+      spark(new THREE.Vector3(G.position.x, 1, G.position.z), 0xddaa77); shake = Math.max(shake, near ? 1 : .3);
+      const wr = new THREE.Mesh(new THREE.RingGeometry(.86, 1, 72), new THREE.MeshBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 1, side: THREE.DoubleSide, depthWrite: false, fog: false }));
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff4a2a, transparent: true, opacity: .4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+      wr.rotation.x = -Math.PI / 2; [wr, dome].forEach(m => { m.position.set(G.position.x, .8, G.position.z); S.add(m); }); O.waveFx = { wr, dome, t: 0, R, H: O.KICK_H * sc }; }, O.KICK_HIT * 1000);
   }
   function applyLimb(key) {
     const o = GI[0]; if (o.gs.parts[key] && !o.gs.parts[key].severed) { O.applying = true; try { severLimb(o, key, new THREE.Vector3(o.G.position.x, o.G.position.y + 10, o.G.position.z), true); } finally { O.applying = false; } }
@@ -401,6 +435,8 @@ const ONL = (() => {
       case 'release': endGrab(false); if (m.id === NET.id) { P.eaten = false; fig.visible = true; } break;
       case 'eat': endGrab(true); break;
       case 'kick': kick(); break;
+      case 'kicked': { useG(GI[0]); const R = O.KICK_R * G.scale.x; O.kickDelay = {}; (m.victims || []).forEach(id => { const r = O.rem.get(id), pp = id === NET.id ? P.pos : r && r.mesh.position; if (pp) O.kickDelay[id] = Math.min(.35, Math.hypot(pp.x - G.position.x, pp.z - G.position.z) / R * .35); }); break; }
+      case 'nape': O.napeBy = m.id; flash(true); shake = Math.max(shake, 1.5); slowmo(2.6); break; // うなじを斬った瞬間（結果は直後に届く）
       case 'guard': O.guardUntil = Date.now() + m.ms; if (!isG() && P.slash) { P.slash = false; P.slashT = 0; P.sw2 = false; toast('うなじ守りで弾かれた！'); } break;
       case 'dead': onDead(m.id, m.by); break;
       case 'limb': applyLimb(m.key); break;
@@ -412,6 +448,17 @@ const ONL = (() => {
   O.nape = () => { P.slash = false; P.slashT = 0; P.sw2 = false; if (Date.now() < O.napeCd) return; O.napeCd = Date.now() + 1200; NET.send({ t: 'event', k: 'nape' }); }; // うなじ斬りの申告（確定はサーバー）
 
   // ---- 結果画面 ----
+  function showFinish(m, win) { // 決着の大きな表示（誰が・どうやって）
+    const nm = O.napeBy ? nameOf(O.napeBy) : '', t = m.reason === 'nape' ? (win ? 'うなじを斬った！' : 'うなじを斬られた…') : (win ? '兵士を全滅させた！' : '全滅…');
+    const ls = m.reason === 'nape' ? [nm + ' が背後からうなじを斬り、巨人が倒れた'] : ['最後の兵士が脱落した'];
+    deathBn.innerHTML = '<h2></h2>'; deathBn.firstChild.textContent = t; deathBn.firstChild.style.color = win ? '#ffd86a' : '#ff6a5a';
+    ls.forEach(x => { const p = document.createElement('p'); p.textContent = x; deathBn.appendChild(p); }); deathBn.style.display = 'block'; clearTimeout(deathT);
+  }
+  function cineCam(rdt) { // 決着カメラ: うなじ（または巨人の頭）のまわりをゆっくり回る
+    useG(GI[0]); G.updateMatrixWorld(true); const T = new THREE.Vector3(), sc = G.scale.x; (O.cineR === 'nape' ? nape : head).getWorldPosition(T);
+    if (O.cineA == null) O.cineA = gs.yaw + Math.PI + .5; O.cineA += rdt * .5; const d = (O.cineR === 'nape' ? 24 : 36) * sc;
+    cam.position.set(T.x + Math.sin(O.cineA) * d, T.y + 3 * sc, T.z + Math.cos(O.cineA) * d); cam.lookAt(T); sky.position.copy(cam.position);
+  }
   function onResult(m) {
     over = true; O.result = m; try { audioStop(); } catch (e) {} document.exitPointerLock && document.exitPointerLock(); GBTN.forEach(b => b.style.display = 'none'); $$('specBar').style.display = 'none';
     if (m.winner === 'soldiers') { O.giantDead = true; useG(GI[0]); gs.deadT = 0; }
@@ -423,12 +470,14 @@ const ONL = (() => {
     if (host && m.reason !== 'giantLeft') { add('もう一度（役割交代あり）', () => NET.send({ t: 'again', swap: true }), 'go'); add('もう一度（役割交代なし）', () => NET.send({ t: 'again', swap: false })); }
     else if (!host) $$('resS').textContent += ' ／ ホストの選択を待っています…';
     add('タイトルへ', () => { NET.send({ t: 'leave' }); sessionStorage.removeItem('gvsSeat'); location.reload(); });
-    $$('resOv').style.display = 'flex';
+    const cine = (m.reason === 'nape' || m.reason === 'allDown') ? 2.6 : 0;
+    if (cine) { O.cineUntil = Date.now() + cine * 1000; O.cineA = null; O.cineR = m.reason; slowmo(cine); showFinish(m, win); setTimeout(() => { deathBn.style.display = 'none'; $$('resOv').style.display = 'flex'; }, cine * 1000); }
+    else $$('resOv').style.display = 'flex';
   }
   NET.on('result', onResult);
 
   // ---- 開始 / 再戦 / 再接続 ----
-  O.clear = () => { O.rem.forEach(r => { S.remove(r.mesh); S.remove(r.line); if (r.beam) S.remove(r.beam); r.tag.remove(); }); O.rem.clear(); };
+  O.clear = () => { O.rem.forEach(r => { S.remove(r.mesh); S.remove(r.line); if (r.beam) S.remove(r.beam); r.tag.remove(); if (r.ring) r.ring.remove(); }); O.rem.clear(); };
   function gasStations() { // ガス補給所: 背の高い建物の屋上に2か所（崩れたら消える）
     if (O.gas.length) return; const top = buildingList.map((b, i) => ({ b, i })).sort((a, b) => b.b.h - a.b.h);
     const pick = []; for (const t of top) { if (pick.every(q => Math.hypot(q.b.px - t.b.px, q.b.pz - t.b.pz) > 80)) pick.push(t); if (pick.length >= 2) break; }
@@ -453,10 +502,13 @@ const ONL = (() => {
     if (mode === 'SP') GBTN.forEach(b => b.style.display = 'block');
     popup(mode === 'SP' ? '巨人: 左スティック移動 / 右のボタンで走る・しゃがむ・蹴り（周囲すべて）・うなじ守り・咆哮 / 手に触れた兵士は自動で掴む / 右の「腕」スティックで両腕を動かす / 右上の 拡縮上下 でカメラ調整' : '巨人: WASD移動 / マウスで向き / Shift走る / G長押しでしゃがむ / 手に触れた兵士は自動で掴む / 右クリック・Space蹴り（周囲すべて） / Cうなじ守り / T咆哮（位置を強調）', 'big');
   };
+  const PCOL = ['#ff6b6b', '#5ec8ff', '#7dff7a', '#ffd24a', '#d28bff'];
+  const colorOf = id => { const p = NET.match && NET.match.players.find(x => x.id === id); return PCOL[((p && p.idx) || 0) % PCOL.length]; };
   const mk = id => {
     const mesh = O.FIG.clone(true); mesh.visible = true; S.add(mesh);
+    const col = colorOf(id); mesh.traverse(o => { if (o.isMesh && o.material && o.material.emissive) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(col); o.material.emissiveIntensity = .3; } }); // 兵士ごとの色（味方も見分けやすい）
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
-    const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xdadee4 })); line.frustumCulled = false; S.add(line);
+    const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xfff1c0 })); line.frustumCulled = false; S.add(line);
     const tag = document.createElement('div'); tag.className = 'ntag'; document.body.appendChild(tag);
     const r = { mesh, line, tag }; O.rem.set(id, r); return r;
   };
@@ -494,17 +546,18 @@ const ONL = (() => {
         let r = O.rem.get(sb.id); if (!sb.a || (O.grab && O.grab.id === sb.id)) { if (r) { r.mesh.visible = false; r.line.visible = false; r.tvis = false; r.tag.style.display = 'none'; if (r.beam) r.beam.visible = false; } continue; }
         if (!r) r = mk(sb.id); r.mesh.visible = r.line.visible = true;
         const x = lp(sa.p[0], sb.p[0], k), y = lp(sa.p[1], sb.p[1], k), z = lp(sa.p[2], sb.p[2], k), yaw = sa.yaw + ad(sb.yaw, sa.yaw) * k;
-        const ms = giant ? 2 : 1; r.mesh.scale.setScalar(ms); r.mesh.position.set(x, y - 1.7 - O.FEET * ms, z); r.mesh.rotation.set(sb.f & 1 ? .3 : 0, yaw, 0); // 巨人からは兵士が小さすぎるので2倍で表示
+        const dcam = Math.hypot(x - cam.position.x, y - cam.position.y, z - cam.position.z), ms = giant ? Math.max(2, Math.min(9, dcam / 22)) : Math.max(1, Math.min(4, dcam / 55)); // 遠いほど大きく描く（判定は変わらない）
+        r.mesh.scale.setScalar(ms); r.mesh.position.set(x, y - 1.7 - O.FEET * ms, z); r.mesh.rotation.set(sb.f & 1 ? .3 : 0, yaw, 0); // 巨人からは兵士が小さすぎるので2倍で表示
         const ws = (k > .5 ? sb : sa).w, ps = r.line.geometry.attributes.position, hip = [x, y - .8, z];
         for (let j = 0; j < 2; j++) { const q = ws[j] || hip; ps.setXYZ(j * 2, hip[0], hip[1], hip[2]); ps.setXYZ(j * 2 + 1, q[0], q[1], q[2]); }
         ps.needsUpdate = true;
         const nv = sb.v || [0, 0, 0], nsp = Math.hypot(nv[0], nv[1], nv[2]), tn = Date.now(); // 音: ダッシュ/斬撃中や高速移動中は居場所がバレる（蒸気の軌跡＋巨人の画面に名前が出る）
         if ((sb.f & 12) || nsp > 15) r.noisyUntil = tn + 1500;
-        if (tn < (r.noisyUntil || 0) && Math.random() < .35) steam.emit(new THREE.Vector3(x, y - .6, z), new THREE.Vector3((Math.random() - .5) * 2, 1 + Math.random() * 2, (Math.random() - .5) * 2), 1.4, 0);
+        if (tn < (r.noisyUntil || 0) && Math.random() < .35) steam.emit(new THREE.Vector3(x, y - .6, z), new THREE.Vector3((Math.random() - .5) * 2, 1 + Math.random() * 2, (Math.random() - .5) * 2), giant ? 2.8 : 1.4, 0);
         if (giant) { if (!r.beam) { r.beam = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 1, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: .3, depthTest: false, depthWrite: false })); r.beam.renderOrder = 999; r.beam.frustumCulled = false; S.add(r.beam); }
           const ro = tn < O.roarUntil, bh = ro ? 140 : 50; r.beam.visible = true; r.beam.scale.set(ro ? 2.2 : 1, bh, ro ? 2.2 : 1); r.beam.position.set(x, y - 1.7 + bh / 2, z); r.beam.material.color.setHex(ro ? 0xff4a3a : 0xffb454); r.beam.material.opacity = ro ? .6 : .3; // 巨人の画面では、兵士の位置に光の柱（壁越しでも見える）。咆哮中は太く赤く
         } else if (r.beam) r.beam.visible = false;
-        r.tp = [x, y + .45, z]; r.tn = nameOf(sb.id) + (sb.c ? '' : '（切断中）'); r.tc = sb.c ? 1 : 0; r.tvis = true; // 名前タグは頭のすぐ上（カメラ確定後に配置）
+        r.tp = [x, y - 1.5 + 1.9 * ms, z]; r.rp = [x, y - 1.7 + .9 * ms, z]; r.cy = y - .6; r.col = colorOf(sb.id); r.tn = nameOf(sb.id) + (sb.c ? '' : '（切断中）'); r.tc = sb.c ? 1 : 0; r.tvis = true; // 名前タグは頭のすぐ上（カメラ確定後に配置）
       }
       O.rem.forEach((r, id) => { if (!seen.has(id)) { r.mesh.visible = r.line.visible = false; r.tvis = false; r.tag.style.display = 'none'; if (r.beam) r.beam.visible = false; } });
       // 相手の巨人（兵士側で表示）: 位置・向き・頭・速度を補間し、歩行アニメは既存の姿勢計算で再生。欠損は申告に合わせる
@@ -525,15 +578,17 @@ const ONL = (() => {
     let watched = false; // 巨人の視線（正面±約33°・距離110以内・建物に遮られない）に入ると警告
     if (!giant && !O.dead && !over) { const o = GI[0], ya = o.gs.yaw + o.headG.rotation.y, wx = P.pos.x - o.G.position.x, wz = P.pos.z - o.G.position.z, wd = Math.hypot(wx, wz);
       if (o.G.visible && wd > 1 && wd < 110 * o.G.scale.x && (wx * Math.sin(ya) + wz * Math.cos(ya)) / wd > .84) { useG(o); watched = los(); } }
-    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 咆哮 ${cdS(O.cd.roar) || '可'}${O.guard ? ' ｜ うなじ守り発動中' : ''}${mode === 'PC' ? ' ｜ 手に触れると掴む / 右クリック・Space蹴り(全方向) / Cうなじ守り / T咆哮 / G長押しでしゃがむ / Shift走る / V視点 / Q・E+WASDで腕 / Z・Xズーム R・F高さ' : ''}`
+    const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 咆哮 ${cdS(O.cd.roar) || '可'}${O.guard ? ' ｜ うなじ守り発動中' : ''}${mode === 'PC' ? ' ｜ 手に触れると掴む / 右クリック・Space蹴り(全方向) / Cうなじ守り / T咆哮 / Bカメラ寄り / G長押しでしゃがむ / Shift走る / V視点 / Q・E+WASDで腕 / Z・Xズーム R・F高さ' : ''}`
       : O.dead ? '観戦中（クリック/Tabで視点切替）' : `生存兵士 ${O.al}人 ｜ 巨人のうなじを背後から斬れ${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}${watched ? ' ｜ ⚠ 巨人に見られている！' : ''}`;
     hud.msg.textContent = msg;
     if (giant && !isPaused) { // カメラ距離/高さ: Z/X=ズーム, R/F=高さ, ホイール=ズーム, 画面の「拡縮上下」ボタン
       const dz = (keys.KeyX || O.camBtn.d > 0 ? 1 : 0) - (keys.KeyZ || O.camBtn.d < 0 ? 1 : 0), dh = (keys.KeyR || O.camBtn.h > 0 ? 1 : 0) - (keys.KeyF || O.camBtn.h < 0 ? 1 : 0);
       if (dz || dh) { O.camD = Math.max(18, Math.min(220, O.camD + dz * 70 * realDt)); O.camH = Math.max(-10, Math.min(90, O.camH + dh * 35 * realDt)); O.camDirty = true; } else if (O.camDirty) { O.camDirty = false; camSave(); }
     }
+    O.zk += ((O.zoomOn ? .45 : 1) - O.zk) * Math.min(1, 6 * realDt);
     if (giant) giantCam(); else if (O.dead && !over) specCam();
-    tagStep();
+    if (over && O.cineUntil && Date.now() < O.cineUntil) cineCam(realDt);
+    tagStep(); mapStep(realDt);
   };
   addEventListener('click', e => { if (O.dead && !over && !(e.target.closest && e.target.closest('button'))) O.specIdx++; });
   NET.on('start', m => {
