@@ -214,7 +214,7 @@ const ft=new THREE.CanvasTexture(fc);ft.wrapS=ft.wrapT=THREE.RepeatWrapping;
 const TC={},chMat=new THREE.MeshStandardMaterial({color:0x5a3a30,roughness:1});
 const buildingList=[];
 const PLAZAS=[]; // 広場は撤去
-for(let gi=0;gi<361;gi++){const px=(gi%19-9)*32,pz=((gi/19|0)-9)*32;if(Math.hypot(px,pz)<40||Math.hypot(px,pz-60)<20||rnd()<.5)continue; // 家は約半分に間引きconst w=19+rnd()*2,h=8+rnd()*14+(Math.hypot(px,pz)<90?rnd()*10:0),rh=w*.38;
+for(let gi=0;gi<361;gi++){const px=(gi%19-9)*32,pz=((gi/19|0)-9)*32;if(Math.hypot(px,pz)<40||Math.hypot(px,pz-60)<20||rnd()<.5)continue;const w=19+rnd()*2,h=8+rnd()*14+(Math.hypot(px,pz)<90?rnd()*10:0),rh=w*.38;
  const kx=Math.max(1,Math.round(w/5)),ky=Math.max(1,Math.round(h/5)),kk=kx+'_'+ky;let tx=TC[kk];if(!tx){tx=ft.clone();tx.needsUpdate=true;tx.repeat.set(kx,ky);TC[kk]=tx;}
  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,w),new THREE.MeshStandardMaterial({map:tx,color:new THREE.Color().setHSL(.08+rnd()*.05,.2,.55+rnd()*.25),roughness:.9}));
  m.position.set(px,h/2,pz);m.castShadow=m.receiveShadow=true;S.add(m);
