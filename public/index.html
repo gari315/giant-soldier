@@ -1151,7 +1151,7 @@ const dash=!!P.dash&&P.vel.length()>=DASH_MIN_SPEED;
  spark(pt,0xff9a70);sfx('chop',pt,dash?2:1,.05);shake=Math.max(shake,.22);triggerSwing(dash?1.6:1);
  addScore(dash?40:20,'体を斬る');st.hurt=Math.max(st.hurt,.5);
  damageGiant(o,dash?14:7);if(!st.dead)showBodyHp(o);}
-function severLimb(o,key,point,noSwing){if(window.ONL&&ONL.active&&!ONL.applying&&!o.gs.parts[key].severed)ONL.sever(key);
+function severLimb(o,key,point,noSwing){if(window.ONL&&ONL.active&&!ONL.applying&&!o.gs.parts[key].severed)ONL.sever(key,o);
  const st=o.gs,part=st.parts[key];
  if(st.dead||!part||part.severed)return false;
  part.damage=part.durability;part.severed=true;part.cooldown=999;part.inContact=false;
@@ -1575,7 +1575,7 @@ let misT=0;
 function restyle(o,st){st=st||STYLES[(Math.random()*STYLES.length)|0];if(!o.mats)return;o.mats.hair.forEach((m,k)=>m.color.setHex(st.hair[k%3]));o.mats.brow.color.setHex(st.brow);o.mats.iris.color.setHex(st.iris);}
 // 群れの巨人: プレイヤーの有無に関係なく、走りながら街のあちこちへ向かう
 function hordeGoal(q,px,pz){let x=0,z=0;for(let t=0;t<12;t++){x=(Math.random()-.5)*560;z=(Math.random()-.5)*560;if(Math.hypot(x-px,z-pz)>110&&free(x,z,4.5))break;}q.goal.set(x,0,z);q.last.set(x,1.7,z);q.mode='search';q.wt=0;q.pk=0;}
-function nearGate(){if(horde&&GATES.every(g=>g.target))return null;let best=null,bd=1e9;for(const g of GATES){if(g.target)continue;const d=Math.hypot(P.pos.x-g.gx*WALL_IN,P.pos.z-g.gz*WALL_IN);if(d<bd){bd=d;best=g;}}return bd<75&&Math.max(Math.abs(P.pos.x),Math.abs(P.pos.z))<WALL_IN+2?best:null;}
+function nearGate(){if(window.ONL&&ONL.active)return null;if(horde&&GATES.every(g=>g.target))return null;let best=null,bd=1e9;for(const g of GATES){if(g.target)continue;const d=Math.hypot(P.pos.x-g.gx*WALL_IN,P.pos.z-g.gz*WALL_IN);if(d<bd){bd=d;best=g;}}return bd<75&&Math.max(Math.abs(P.pos.x),Math.abs(P.pos.z))<WALL_IN+2?best:null;}
 function inOpenGate(x,z,y,m){if(y>=GATE_H-3)return false;const L=GATE_W/2-6+m;for(const g of GATES){if(g.open<.9)continue;if(g.gx&&x*g.gx>WALL_IN-8&&Math.abs(z)<L)return true;if(g.gz&&z*g.gz>WALL_IN-8&&Math.abs(x)<L)return true;}return false;}
 function openGate(){const g=nearGate();if(!g||over)return false;g.target=1;sfx('wave');if(!horde){horde=true;hT=.6;hKills=0;waveCleared=false;GI.forEach(o=>{if(o.gs.dead)return;o.gs.hrun=true;o.gs.run=5;hordeGoal(o.gs,o.G.position.x,o.G.position.z);});$('rpl').style.display='none';$('pauseBtn').style.display='block';popup('門が開いた！ 巨人の群れが押し寄せる！','big');popup('ウェーブ制は終了。生き残って討伐を重ねろ');}else popup('別の門が開いた！','big');return true;}
 function resetHorde(){horde=false;hT=0;hKills=0;GATES.forEach(g=>{g.open=0;g.target=0;g.door.position.y=0;});while(GI.length>3){const o=GI.pop();o.G.visible=false;HPOOL.push(o);}}
@@ -1796,7 +1796,7 @@ const dx=P.pos.x-G.position.x,dz=P.pos.z-G.position.z,dist=Math.hypot(dx,dz);
    }
   if(P.slash){useG(P.sg||GI[0]);P.slashT+=dt;if(P.slashT>.42&&!P.sw2){P.sw2=true;triggerSwing(2);sfx('chop',G.position,2,.12);}const T=nape.getWorldPosition(new THREE.Vector3()),ddx=T.x-P.pos.x,ddz=T.z-P.pos.z,lh=Math.hypot(ddx,ddz);
    let ty=Math.atan2(-ddx,-ddz)-P.yaw;ty=Math.atan2(Math.sin(ty),Math.cos(ty));P.yaw+=ty*Math.min(1,10*dt);P.pitch+=(Math.atan2(T.y-P.pos.y,lh)-P.pitch)*Math.min(1,10*dt);
-   if(Math.random()<.35)spark(T,0xcc1515);for(let q=0;q<1;q++)blood.emit(T,new THREE.Vector3((Math.random()-.5)*16,Math.random()*14,(Math.random()-.5)*16),1.1,30);shake=.25;if(P.slashT>.9){if(window.ONL&&ONL.active)ONL.nape();else killGiant();}}
+   if(Math.random()<.35)spark(T,0xcc1515);for(let q=0;q<1;q++)blood.emit(T,new THREE.Vector3((Math.random()-.5)*16,Math.random()*14,(Math.random()-.5)*16),1.1,30);shake=.25;if(P.slashT>.9){if(window.ONL&&ONL.active)ONL.nape(P.sg);else killGiant();}}
   if(!P.eaten&&!P.slash){
    const c=Math.cos(P.yaw),s=Math.sin(P.yaw);F.set(-s,0,-c);Rt.set(c,0,-s);
    let mx=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,mz=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y;
@@ -1983,7 +1983,7 @@ const dx=P.pos.x-G.position.x,dz=P.pos.z-G.position.z,dist=Math.hypot(dx,dz);
  sun.target.position.set(P.pos.x,0,P.pos.z);sun.position.set(P.pos.x-50,32,P.pos.z-90);
  for(let i=fx.length-1;i>=0;i--){const f=fx[i];f.t+=dt;const a=1-f.t/.4;f.m.material.opacity=a;f.m.scale.setScalar(1+f.t*6);if(a<=0){S.remove(f.m);fx.splice(i,1);}}
  updHorde(dt);if(!over){comboT=Math.max(0,comboT-dt);if(comboT<=0)combo=0;if(!waveCleared)WST.t+=dt;
-  if(!horde&&GI.every(o=>o.gs.dead)){if(!waveCleared){waveCleared=true;waveT=8;sfx('clear');waveClear();}
+  if(!horde&&!(window.ONL&&ONL.active)&&GI.every(o=>o.gs.dead)){if(!waveCleared){waveCleared=true;waveT=8;sfx('clear');waveClear();}
    waveT-=dt;if(waveT<=0)startWave();}}
  {const sc=$('score');sc.style.display=over?'none':'block';if(!over)sc.innerHTML=(horde?'<b>門 開放</b> <span':'WAVE <b>'+wave+'</b> <span')+'  style="font-size:11px;opacity:.85">'+(horde?'巨人の群れ':waveDef(wave).name)+'</span><br>SCORE <b>'+score+'</b>'+(combo>1?'<br>COMBO <b>'+combo+'</b> ×'+Math.min(5,1+Math.floor((combo-1)/2)):'');}
  hud.hp.textContent='';
