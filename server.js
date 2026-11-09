@@ -179,7 +179,7 @@ function handleState(room, p, m) {
   } else {
     p.st = { p: pos, yaw: num(m.yaw, 100), hy: num(m.hy, 100), sp: num(m.sp, 200), run: m.run ? 1 : 0, sc: Math.max(.5, Math.min(3, num(m.sc, 10) || 1)),
       limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), cq: m.cq ? 1 : 0, hnd: [0, 1].map(i => vec(m.hnd && m.hnd[i])), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), guard: 0,
-      ar: [0, 1].map(i => (m.ar && Array.isArray(m.ar[i])) ? [num(m.ar[i][0], 1), num(m.ar[i][1], 1), m.ar[i][2] == null ? null : num(m.ar[i][2], 30)] : null) }; // 腕の操作: [横,上下,前方距離] (横・上下は -1〜1) または null
+      ar: [0, 1].map(i => (m.ar && Array.isArray(m.ar[i])) ? [num(m.ar[i][0], 1), num(m.ar[i][1], 1), m.ar[i][2] == null ? null : num(m.ar[i][2], 30)].concat(m.ar[i].length > 5 ? [num(m.ar[i][3], 420), num(m.ar[i][4], 420), num(m.ar[i][5], 420)] : []) : null) }; // 腕の操作: [横,上下,前方距離(,目標のワールド座標x,y,z)] または null
     (p.hist = p.hist || []).push({ t: now(), p: pos, hy: p.st.hy, sc: p.st.sc, nh: p.st.nh }); if (p.hist.length > 14) p.hist.shift(); // うなじ判定の遅延補償用
   }
 }
