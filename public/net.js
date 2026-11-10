@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-13a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-14a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -148,7 +148,7 @@ const ONL = (() => {
   const SPAWN = [[-6, 60], [6, 60], [-6, 72], [6, 72]];
   const nameOf = id => ((NET.match && NET.match.players.find(p => p.id === id)) || {}).name || '?';
   const isG = () => O.me && O.me.role === 'giant';
-  O.giants = () => []; // ソロのAI巨人の処理は止め、巨人は giantStep / 通信で動かす
+  O.giants = () => O.coop ? GI : []; // 対戦: ソロのAI巨人は止め、巨人は giantStep / 通信で動かす。協力: ソロと同じAI巨人をそのまま動かす
 
   // ---- 建物の崩壊 ----
   O.collapse = bi => {
@@ -443,9 +443,9 @@ const ONL = (() => {
       tg.style.left = (L0 + (x * .5 + .5) * W) + 'px'; tg.style.top = (T0 + (-y * .5 + .5) * H) + 'px';
     });
   }
-  function specTargets() { const t = [{ g: 1 }]; O.rem.forEach((r, id) => { if (r.mesh.visible) t.push({ id, r }); }); return t; }
+  function specTargets() { const t = O.coop ? [] : [{ g: 1 }]; O.rem.forEach((r, id) => { if (r.mesh.visible) t.push({ id, r }); }); return t; }
   function specCam() { // 脱落後の観戦: 巨人 / 生存兵士の視点を切り替え
-    const ts = specTargets(), t = ts[O.specIdx % ts.length]; $$('specTxt').textContent = '観戦中: ' + (t.g ? '巨人' : nameOf(t.id));
+    const ts = specTargets(); if (!ts.length) return; const t = ts[O.specIdx % ts.length]; $$('specTxt').textContent = '観戦中: ' + (t.g ? '巨人' : nameOf(t.id));
     if (t.g) return giantCam();
     P.pitch = Math.max(-.9, Math.min(1.2, P.pitch)); const pos = t.r.mesh.position, cp = Math.cos(P.pitch), T = new THREE.Vector3(pos.x, pos.y + 1.7 + O.FEET, pos.z);
     cam.position.set(T.x + Math.sin(P.yaw) * cp * 14, Math.max(1.5, T.y - Math.sin(P.pitch) * 14 + 3), T.z + Math.cos(P.yaw) * cp * 14); cam.lookAt(T); sky.position.copy(cam.position);
@@ -505,33 +505,6 @@ const ONL = (() => {
       const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff4a2a, transparent: true, opacity: .4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
       wr.rotation.x = -Math.PI / 2; [wr, dome].forEach(m => { m.position.set(G.position.x, .8, G.position.z); S.add(m); }); O.waveFx = { wr, dome, t: 0, R, H: O.KICK_H * sc }; }, O.KICK_HIT * 1000);
   }
-  // ---- 協力モード: サーバーが動かす AI 巨人（最大14体）を既存の巨人モデルで表示 ----
-  function coopGiant(gid, gb) {
-    let o = O.gmap.get(gid); if (o) return o;
-    const used = new Set(O.gmap.values()); o = GI.find(q => !used.has(q));
-    if (!o) { if (HPOOL.length) { o = HPOOL.pop(); GI.push(o); }
-      else if (GI.length < 14) { o = buildGiant(0, STYLES[0]); o.gs = newGs(3); o.GS = mkGS(o); o.GS.forEach((g, j) => { if (j === 4 || j === 5) g.partKey = 'leftArm'; else if (j === 6 || j === 7) g.partKey = 'rightArm'; else if (j >= 8 && j <= 10) g.partKey = 'leftLeg'; else if (j >= 11 && j <= 13) g.partKey = 'rightLeg'; }); GI.push(o); }
-      else return null; }
-    const n = parseInt(String(gid).slice(1)) || 0; resetGiant(o, 3, [gb.p[0], gb.p[2]]); restyle(o, STYLES[n % STYLES.length]); useG(o); o.G.visible = true; o.G.scale.setScalar(gb.sc); o.sc = gb.sc; o.gid = gid; o.wasDead = false; gs.hrun = false;
-    O.gmap.set(gid, o); return o;
-  }
-  function applyCoop(A, B, k, rdt) {
-    const present = new Set(), hp = new THREE.Vector3(); O.heldPos.clear();
-    for (const gb of (B.gl || [])) {
-      const ga = (A.gl || []).find(x => x.id === gb.id) || gb, o = coopGiant(gb.id, gb); if (!o) continue; present.add(gb.id);
-      useG(o); G.visible = true; if (Math.abs(G.scale.x - gb.sc) > .01) G.scale.setScalar(gb.sc);
-      LIMB_KEYS.forEach((key, li) => { if (gb.limbs[li] && !gs.parts[key].severed) applyLimb(key, gb.id); });
-      gs.yaw = ga.yaw + ad(gb.yaw, ga.yaw) * k; headG.rotation.y = 0; gs.spd = lp(ga.sp, gb.sp, k); gs.run = gb.run ? 5 : 0; gs.cq = 0; gs.dead = gb.dead ? 1 : 0; gs.mode = 'chase';
-      if (gb.dead && !o.wasDead) { o.wasDead = true; gs.deadT = 0; }
-      if (legLossOf(gs) > 0) updateLegless(rdt, gs.spd > .4, gs.trait.walkSpeed); else gs.phase += gs.spd * rdt * 1.8 / (17.4 * (.42 + .33 * gs.rn) * G.scale.x);
-      G.position.set(lp(ga.p[0], gb.p[0], k), 0, lp(ga.p[2], gb.p[2], k)); G.rotation.y = gs.yaw; O.armT = gb.ar || null; O.pose(o, rdt);
-      if (gb.grab && gb.gid) { G.updateMatrixWorld(true); arms[gs.parts.leftArm.severed ? 1 : 0].wr.getWorldPosition(hp); O.heldPos.set(gb.gid, hp.clone()); } // 掴まれた兵士は手の位置に表示
-      if (!gb.dead) buildingList.forEach((b, bi) => { if (!b.collapsing && !b.destroyed && Math.hypot(b.px - G.position.x, b.pz - G.position.z) < b.w / 2 + 9 * G.scale.x) O.collapse(bi); }); // 触れた建物は崩壊
-    }
-    O.gmap.forEach((o, gid) => { if (!present.has(gid)) { o.G.visible = false; o.G.position.set(9000, 0, 9000); O.gmap.delete(gid); } });
-    if (!O.dead && O.heldPos.has(NET.id)) { const h = O.heldPos.get(NET.id); P.pos.set(h.x, h.y, h.z); P.vel.set(0, 0, 0); } // 自分が掴まれている間は手に運ばれる
-    downStep(B);
-  }
   function coopGrab(m) {
     if (m.id === NET.id) { P.eaten = true; releaseWires(); P.stuck = false; P.vel.set(0, 0, 0); popup('掴まれた！ 仲間が腕かうなじを斬れば助かる', 'big'); }
     else if (!O.dead) toast('⚠ ' + nameOf(m.id) + ' が巨人に掴まれた！ 腕かうなじを斬って助けろ');
@@ -556,8 +529,8 @@ const ONL = (() => {
       case 'release': if (O.coop) { if (m.id === NET.id && !O.dead) { P.eaten = false; fig.visible = true; popup('解放された！', 'big'); } break; } endGrab(false); if (m.id === NET.id) { P.eaten = false; fig.visible = true; } break;
       case 'eat': if (O.coop) { const hv = O.heldPos.get(m.id); if (hv) { shake = Math.max(shake, .8); for (let q = 0; q < 4; q++) spark(hv, 0xaa1010); } break; } endGrab(true); break;
       case 'gspawn': if (O.coop) toast('⚠ 壁の門から巨人が侵入！'); break;
-      case 'gkill': { const og = O.gmap.get(m.gid); if (og) { useG(og); gs.dead = 1; gs.deadT = 0; og.wasDead = true; sfx('die', G.position); } O.kills = m.kills; bigMsg('巨人を倒した！ ' + m.kills + ' / ' + O.goal, '#ffd86a', 1600); break; }
-      case 'revive': { if (m.id === NET.id) { O.dead = false; P.eaten = false; fig.visible = true; P.pos.set(m.p[0], Math.max(3, m.p[1]), m.p[2]); P.vel.set(0, 0, 0); P.gasAmt = 100; P.sp = 4; $$('specBar').style.display = 'none'; deathBn.style.display = 'none'; flash(true); bigMsg('🆘 仲間に助けられた！ 復活', '#7dff7a', 2400); }
+      case 'gkill': O.kills = m.kills; if (m.id !== NET.id) bigMsg(nameOf(m.id) + ' が巨人を倒した！ 合計 ' + m.kills + ' / ' + O.goal, '#ffd86a', 1500); else bigMsg('巨人を倒した！ 合計 ' + m.kills + ' / ' + O.goal, '#ffd86a', 1500); break;
+      case 'revive': { if (m.id === NET.id) { O.dead = false; P.eaten = false; fig.visible = true; held.visible = false; P.pos.set(m.p[0], Math.max(3, m.p[1]), m.p[2]); P.vel.set(0, 0, 0); P.gasAmt = 100; P.sp = 4; $$('specBar').style.display = 'none'; deathBn.style.display = 'none'; flash(true); bigMsg('🆘 仲間に助けられた！ 復活', '#7dff7a', 2400); }
         else bigMsg('✚ ' + nameOf(m.id) + ' を救助した！', '#7dff7a', 1800); break; }
       case 'lost': toast(nameOf(m.id) + ' は助からなかった…'); break;
       case 'kick': kick(); break;
@@ -571,6 +544,9 @@ const ONL = (() => {
         if (isG()) toast('咆哮！ 全員の位置が見える'); else if (!O.dead) popup('巨人の咆哮！ 位置を知られた', 'big'); break; }
     }
   }
+  O.kill = () => NET.send({ t: 'event', k: 'gk' }); // 協力: 自分の画面の巨人を倒した（撃破数の集計用）
+  O.selfDown = by => { const n = Date.now(); if (O.dead || n - (O.downSent || 0) < 1500) return; O.downSent = n; NET.send({ t: 'event', k: 'down', by }); // 協力: 食べられた → 倒れた状態へ（救助待ち）
+    GI.forEach(o => { const q = o.gs; if (q.grab === 2) { q.grab = 0; q.recover = 2; q.gt = 3; q.ch = 0; } }); held.visible = false; P.eaten = true; };
   O.sever = (key, o) => NET.send({ t: 'event', k: 'limb', key, gid: o && o.gid, sp: O.viaSpear ? 1 : 0 });            // 自分の刃で切断した → サーバー経由で全員へ
   O.nape = gi => { P.slash = false; P.slashT = 0; P.sw2 = false; if (Date.now() < O.napeCd) return; O.napeCd = Date.now() + 1200; NET.send({ t: 'event', k: 'nape', gid: gi && gi.gid }); }; // うなじ斬りの申告（確定はサーバー）
 
@@ -617,11 +593,11 @@ const ONL = (() => {
     $$('resOv').style.display = 'none'; $$('specBar').style.display = 'none'; GBTN.forEach(b => b.style.display = 'none');
     O.ui.forEach(([e, d]) => { e.style.display = d; }); O.ui = [];
     deathBn.style.display = 'none'; kf.innerHTML = ''; clearDown(); Object.assign(O, { coop: !!m.coop, goal: m.goal || 0, kills: 0, gmap: new Map(), heldPos: new Map(), me: m.players.find(p => p.id === NET.id), snaps: [], off: null, armT: null, armId: null, armStick: { x: 0, y: 0, sx: 0, sy: 0 }, camBtn: { d: 0, h: 0 }, grab: null, guardUntil: 0, guardLeft: m.gl != null ? m.gl : 3, kickT: 0, roarUntil: 0, roarMouth: 0, dead: false, giantDead: false, result: null, al: 0, specIdx: 0, cd: { roar: 0 }, napeCd: 0 }); O.clear();
-    NET.on('snap', onSnap); NET.on('event', onEvent); O.active = true; PREF.map = false; PREF.arrow = false;
+    NET.on('snap', onSnap); NET.on('event', onEvent); O.active = true; if (!O.coop) { PREF.map = false; PREF.arrow = false; }
     if (!O.me) return;
     startGame(); held.visible = false; fig.visible = true; cam.fov = 70; cam.updateProjectionMatrix();
-    if (O.coop) GATES.forEach(g => { g.target = 1; }); // 協力モード: 壁の門を開放
-    GI.forEach(o => { o.G.visible = false; o.G.position.set(9000, 0, 9000); });
+    if (O.coop) startCoopHorde(); // 協力モード: ソロの「群れ」と同じ。門が開き、巨人が次々と侵入する
+    else GI.forEach(o => { o.G.visible = false; o.G.position.set(9000, 0, 9000); });
     if (!O.FIG) { O.FIG = fig.clone(true); O.FIG.visible = true; O.FIG.position.set(0, 0, 0); O.FIG.rotation.set(0, 0, 0); O.FIG.scale.setScalar(1);
       O.FIG.updateMatrixWorld(true); O.FEET = new THREE.Box3().setFromObject(O.FIG).min.y; } // 足元を基準に置くための補正
     gasStations();
@@ -693,7 +669,7 @@ const ONL = (() => {
       O.rem.forEach((r, id) => { if (!seen.has(id)) { r.mesh.visible = r.line.visible = false; r.tvis = false; r.tag.style.display = 'none'; if (r.beam) r.beam.visible = false; } });
       // 相手の巨人（兵士側で表示）: 位置・向き・頭・速度を補間し、歩行アニメは既存の姿勢計算で再生。欠損は申告に合わせる
       const ga = A.g || B.g, gb = B.g || A.g;
-      if (O.coop) applyCoop(A, B, k, realDt);
+      if (O.coop) downStep(B);
       else if (!giant && gb) {
         const o = GI[0]; useG(o); G.visible = true; if (Math.abs(G.scale.x - gb.sc) > .01) G.scale.setScalar(gb.sc);
         LIMB_KEYS.forEach((key, li) => { if (gb.limbs[li] && !gs.parts[key].severed) applyLimb(key); });
@@ -711,7 +687,7 @@ const ONL = (() => {
     if (!giant && !O.dead && !over && !O.coop) { const o = GI[0], ya = o.gs.yaw + o.headG.rotation.y, wx = P.pos.x - o.G.position.x, wz = P.pos.z - o.G.position.z, wd = Math.hypot(wx, wz);
       if (o.G.visible && wd > 1 && wd < 110 * o.G.scale.x && (wx * Math.sin(ya) + wz * Math.cos(ya)) / wd > .84) { useG(o); watched = los(); } }
     const msg = over ? '' : giant ? `残り兵士 ${O.al}人 ｜ 咆哮 ${cdS(O.cd.roar) || '可'} ｜ うなじ守り 残り${O.guardLeft}回${O.guard ? '（発動中）' : ''}${mode === 'PC' ? ' ｜ 手に触れると掴む / 右クリック・Space蹴り(全方向) / Cうなじ守り / T咆哮 / Bカメラ寄り / G長押しでしゃがむ / Shift走る / V視点 / E長押し=画面中央へ手を伸ばす（Q=両手） / Z・Xズーム R・F高さ' : ''}`
-      : O.dead ? (O.coop ? `観戦中 ｜ 仲間の救助を待っています${O.downFx.get(NET.id) ? '（残り' + O.downFx.get(NET.id).d.tl + '秒）' : ''}` : '観戦中（クリック/Tabで視点切替）') : O.coop ? `協力 ｜ 巨人 ${O.kills}/${O.goal} 撃破 ｜ 生存 ${O.al}人 ｜ 倒れた仲間のそばに数秒いると救助${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}` : `生存兵士 ${O.al}人 ｜ 巨人のうなじを背後から斬れ${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}${watched ? ' ｜ ⚠ 巨人に見られている！' : ''}`;
+      : O.dead ? (O.coop ? `観戦中 ｜ 仲間の救助を待っています${O.downFx.get(NET.id) ? '（残り' + O.downFx.get(NET.id).d.tl + '秒）' : ''}` : '観戦中（クリック/Tabで視点切替）') : O.coop ? `協力 ｜ 撃破 ${O.kills}/${O.goal}（自分 ${hKills}） ｜ 生存 ${O.al}人 ｜ 倒れた仲間のそばに数秒いると救助${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}` : `生存兵士 ${O.al}人 ｜ 巨人のうなじを背後から斬れ${O.gas.some(g => g.m.visible && P.pos.distanceTo(g.m.position) < 8) ? ' ｜ ガス補給中' : ''}${watched ? ' ｜ ⚠ 巨人に見られている！' : ''}`;
     hud.msg.textContent = msg;
     if (giant && !isPaused) { // カメラ距離/高さ: Z/X=ズーム, R/F=高さ, ホイール=ズーム, 画面の「拡縮上下」ボタン
       const dz = (keys.KeyX || O.camBtn.d > 0 ? 1 : 0) - (keys.KeyZ || O.camBtn.d < 0 ? 1 : 0), dh = (keys.KeyR || O.camBtn.h > 0 ? 1 : 0) - (keys.KeyF || O.camBtn.h < 0 ? 1 : 0);
