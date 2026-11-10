@@ -51,7 +51,9 @@ const cleanName = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().
 const send = (p, m) => { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify(m)); };
 const bcast = (room, m) => { const s = JSON.stringify(m); for (const p of room.players.values()) if (p.ws && p.ws.readyState === 1) p.ws.send(s); };
 const err = (p, m) => send(p, { t: 'err', m });
-function newCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c; do { c = Array.from({ length: 4 }, () => A[crypto.randomInt(A.length)]).join(''); } while (rooms.has(c)); return c; }
+const HIRA = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわ'; // 部屋コード: ひらがな1文字（満室のときだけ2文字）
+function newCode() { const free = [...HIRA].filter(c => !rooms.has(c)); if (free.length) return free[crypto.randomInt(free.length)]; let c; do { c = HIRA[crypto.randomInt(HIRA.length)] + HIRA[crypto.randomInt(HIRA.length)]; } while (rooms.has(c)); return c; }
+const normCode = s => String(s || '').normalize('NFKC').trim().replace(/[\u30a1-\u30f6]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)); // カタカナ・全角入力でもひらがなに揃える
 const giantOf = r => [...r.players.values()].find(p => p.role === 'giant');
 const soldiersOf = r => [...r.players.values()].filter(p => p.role === 'soldier');
 
@@ -195,14 +197,14 @@ wss.on('connection', ws => {
         room = { code: newCode(), host: null, phase: 'lobby', players: new Map(), grab: null };
         rooms.set(room.code, room); p = addPlayer(room, m.name, ws);
       } else if (m.t === 'join') {
-        room = rooms.get(String(m.code || '').toUpperCase());
+        room = rooms.get(normCode(m.code));
         const tmp = { ws, id: '-' };
         if (!room) return err(tmp, 'noRoom');
         if (room.players.size >= C.MAX_PLAYERS) return err(tmp, 'full');
         if (room.phase !== 'lobby') return err(tmp, 'inProgress');
         p = addPlayer(room, m.name, ws);
       } else if (m.t === 'resume') {
-        room = rooms.get(String(m.code || '').toUpperCase());
+        room = rooms.get(normCode(m.code));
         p = room && [...room.players.values()].find(x => x.token === m.token);
         if (!p) return err({ ws }, 'noSeat');
         if (p.ws && p.ws !== ws) { p.ws.room = null; p.ws.close(); }
