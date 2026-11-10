@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-14b'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-15a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -77,7 +77,7 @@ const ONL = (() => {
   const O = { active: false, snaps: [], off: null, rem: new Map(), acc: 0, me: null, DELAY: 100, SEND_HZ: 20, FIG: null, FEET: 0, runBtn: false, guard: false,
     TURN_MUL: 1.6, SPD_MUL: 1,                                            // 巨人の旋回・速度の調整用
     GRAB_REACH: 12, KICK_R: 16, KICK_H: 22, KICK_T: 1.6, KICK_HIT: 1.13, crouchBtn: false, grabTry: 0, ROAR_CD: 14000, kickT: 0, roarUntil: 0, roarMouth: 0, armId: null, armStick: { x: 0, y: 0, sx: 0, sy: 0 },         // サーバー(server.js の C)と合わせる
-    grab: null, camD: 60, camH: 12, zoomOn: false, zk: 1, aimOn: false, aimId: null, aimPt: null, aimT: null, aimMark: null, aimOut: false, aimHold: 0, AIM_R: 20, armSel: 0, armSens: 1, follow: .6, basis: null, expYaw: null, manualT: 0, camBtn: { d: 0, h: 0 }, armT: null, guardUntil: 0, cd: { roar: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
+    grab: null, camD: 60, camH: 12, zoomOn: false, zk: 1, aimOn: false, aimId: null, aimPt: null, aimT: null, aimMark: null, aimOut: false, aimHold: 0, AIM_R: 20, AIM_S: 13, aimS: null, armSel: 0, armSens: 1, follow: .6, basis: null, expYaw: null, manualT: 0, camBtn: { d: 0, h: 0 }, armT: null, guardUntil: 0, cd: { roar: 0 }, dead: false, giantDead: false, al: 0, specIdx: 0, napeCd: 0, applying: false, gas: [], ui: [] };
   const $$ = id => document.getElementById(id);
   try { const j = JSON.parse(localStorage.getItem('gvsGiantCam') || 'null'); if (j) { O.camD = Math.max(18, Math.min(220, +j.d || 72)); O.camH = Math.max(-10, Math.min(90, isNaN(+j.h) ? 12 : +j.h)); } } catch (e) {}
   // 巨人の操作設定（ポーズ画面のスライダで調整・保存）
@@ -123,7 +123,7 @@ const ONL = (() => {
   const bAim = mkBtn('gAim', '🖐 手を伸ばす OFF', 14, 24, v => { if (v) aimToggle(); });
   const mapToggle = () => { PREF.map = !PREF.map; const c = $$('mapC'); if (c) c.checked = PREF.map; try { savePref(); } catch (e) {} toast(PREF.map ? 'ミニマップ 表示' : 'ミニマップ 非表示'); };
   const aimToggle = () => { O.aimOn = !O.aimOn; bAim.textContent = '🖐 手を伸ばす ' + (O.aimOn ? 'ON' : 'OFF'); bAim.classList.toggle('on', O.aimOn); if (!O.aimOn) aimEnd();
-    toast(O.aimOn ? '画面の右側をタッチ／ドラッグした場所へ手が伸びます（兵士をタッチするとそこへ）。視点は自動追従' : '手を伸ばすモードをOFF（右側のドラッグで視点を回せます）'); };
+    toast(O.aimOn ? '画面の右側をタッチ／ドラッグ: 巨人のまわりの球に沿って手が動きます（兵士をタッチするとそこへ）。視点は自動追従' : '手を伸ばすモードをOFF（右側のドラッグで視点を回せます）'); };
   const bZoom = mkBtn('gZoom', '寄る', 14, 24, v => { if (v) zoomToggle(); });
   const zoomToggle = () => { O.zoomOn = !O.zoomOn; bZoom.classList.toggle('on', O.zoomOn); toast(O.zoomOn ? 'カメラを寄せました（もう一度で戻る）' : 'カメラを戻しました'); };
   const bCamIn = mkBtn('gCamIn', '拡', 0, 0, v => { O.camBtn.d = v ? -1 : 0; }, 'sm', 50);
@@ -316,20 +316,25 @@ const ONL = (() => {
     if (shield) { shield.visible = on; if (on) { shield.scale.setScalar(1 + .1 * Math.sin(Date.now() / 60)); shield.material.opacity = .35 + .2 * Math.sin(Date.now() / 90); } }
   }
 
-  // 指した画面位置 → ワールドの目標点。兵士の近く（画面上60px以内）なら兵士に吸着、それ以外は地面（届かなければ届く最大距離の点）
-  const aV = new THREE.Vector3(), aD = new THREE.Vector3(), aS = new THREE.Vector3();
-  function computeAim(pt) {
-    const o = GI[0]; useG(o); const sc = G.scale.x, gp = G.position, Rr = O.AIM_R * sc, cv = R.domElement.getBoundingClientRect(), W = cv.width || innerWidth, H = cv.height || innerHeight;
-    const px = pt === 'c' ? cv.left + W / 2 : pt.x, py = pt === 'c' ? cv.top + H / 2 : pt.y; cam.updateMatrixWorld(true);
+  // 指した画面位置 → 手の目標点。巨人の胸を中心とした「届く球」の表面を、手が沿って動く（上・横・前・下のどこへでも）。
+  // 指の先をカメラから見て球の向こう側（巨人の前方側）の表面に当てる。兵士の近く（画面上60px以内）なら兵士に吸着（届く範囲内なら兵士そのもの、遠ければ兵士の方向の球面）
+  const aV = new THREE.Vector3(), aD = new THREE.Vector3(), aS = new THREE.Vector3(), aC = new THREE.Vector3(), aO = new THREE.Vector3(), aP = new THREE.Vector3(), aQ = new THREE.Vector3(), aT = new THREE.Vector3();
+  function computeAim(pt, dt) {
+    const o = GI[0]; useG(o); const sc = G.scale.x, gp = G.position, Rs = O.AIM_S * sc, Rr = O.AIM_R * sc, cv = R.domElement.getBoundingClientRect(), W = cv.width || innerWidth, H = cv.height || innerHeight;
+    const px = pt === 'c' ? cv.left + W / 2 : pt.x, py = pt === 'c' ? cv.top + H / 2 : pt.y; cam.updateMatrixWorld(true); chest.getWorldPosition(aC);
     let snap = null, bd = 60; O.rem.forEach(r => { if (!r.mesh.visible || !r.rp) return; aS.set(r.rp[0], r.cy, r.rp[2]).project(cam); if (aS.z > 1) return; const d = Math.hypot(cv.left + (aS.x * .5 + .5) * W - px, cv.top + (-aS.y * .5 + .5) * H - py); if (d < bd) { bd = d; snap = r; } });
-    let T = O.aimT || new THREE.Vector3(), mark = O.aimMark || new THREE.Vector3();
-    if (snap) { T.set(snap.rp[0], snap.cy, snap.rp[2]); mark.copy(T); }
-    else { aD.set(((px - cv.left) / W) * 2 - 1, -((py - cv.top) / H) * 2 + 1, .5).unproject(cam).sub(cam.position).normalize(); let hit = false;
-      if (aD.y < -.02) { const t = (1 - cam.position.y) / aD.y; aV.copy(cam.position).addScaledVector(aD, t); hit = true; } else { aV.copy(cam.position).addScaledVector(aD, 80); aV.y = Math.max(1, Math.min(aV.y, 36 * sc)); }
-      mark.copy(aV); T.copy(aV); T.y = Math.max(1, Math.min(T.y, 40 * sc)); }
-    const dx = T.x - gp.x, dz = T.z - gp.z, dh = Math.hypot(dx, dz); O.aimOut = dh > Rr; O.aimDist = dh;
-    if (dh > Rr) { T.x = gp.x + dx / dh * Rr; T.z = gp.z + dz / dh * Rr; } // 届かない点は、同じ方向の届く限界へ
-    O.aimT = T; O.aimMark = mark; O.aimSnap = !!snap;
+    let exact = false; O.aimOut = false; O.aimTxt = '';
+    if (snap) { aS.set(snap.rp[0], snap.cy, snap.rp[2]); O.aimDist = aS.distanceTo(aC); if (Math.hypot(aS.x - gp.x, aS.z - gp.z) <= Rr) { aT.copy(aS); exact = true; } else { aT.copy(aS).sub(aC).normalize().multiplyScalar(Rs).add(aC); O.aimOut = true; } O.aimMark = (O.aimMark || new THREE.Vector3()).copy(aS); O.aimTxt = Math.round(O.aimDist) + 'm 🎯' + (O.aimOut ? '遠い' : '届く'); }
+    else { aD.set(((px - cv.left) / W) * 2 - 1, -((py - cv.top) / H) * 2 + 1, .5).unproject(cam).sub(cam.position).normalize(); aO.copy(cam.position).sub(aC);
+      const b = aO.dot(aD), disc = b * b - (aO.lengthSq() - Rs * Rs);
+      if (disc >= 0) aT.copy(cam.position).addScaledVector(aD, -b + Math.sqrt(disc)); // 球の向こう側（前方側）の表面
+      else aT.copy(cam.position).addScaledVector(aD, Math.max(0, -b)).sub(aC).normalize().multiplyScalar(Rs).add(aC); // 球から外れたら、一番近い球面の点
+      O.aimMark = (O.aimMark || new THREE.Vector3()).copy(aT); }
+    // 球の表面に沿って滑らかに動かす（弦を横切らず、向きを回転させる）
+    const sm = O.aimS; if (!sm || !O.aimT) O.aimS = aT.clone();
+    else if (exact) O.aimS.lerp(aT, Math.min(1, 12 * dt));
+    else { aP.copy(sm).sub(aC).normalize(); aQ.copy(aT).sub(aC).normalize(); const ang = aP.angleTo(aQ), st = ang > 1e-4 ? Math.min(1, 7 * dt / ang) : 1; aP.lerp(aQ, st).normalize(); O.aimS.copy(aC).addScaledVector(aP, Rs); }
+    O.aimT = O.aimT || new THREE.Vector3(); O.aimT.copy(O.aimS); O.aimSnap = !!snap; O.aimC = aC.clone();
   }
   function giantStep(dt) {
     const o = GI[0]; useG(o); P.pitch = Math.max(-.9, Math.min(.5, P.pitch));
@@ -339,7 +344,7 @@ const ONL = (() => {
     if (l < .15 || manual || O.basis == null) O.basis = P.yaw; const c = Math.cos(O.basis), sn = Math.sin(O.basis);
     // 手を伸ばす: 指（スマホ）/ 画面中央（PC: E=近い方の手, Q=両手）で指した点へ、手が伸びる。兵士の近くなら兵士へ吸着
     const aimPt = O.aimId != null ? O.aimPt : (keys.KeyE || keys.KeyQ) ? 'c' : null;
-    if (aimPt && !O.grab && !over) { computeAim(aimPt); O.aimHold = nowT + 600; if (keys.KeyQ && aimPt === 'c') O.aimBoth = true; else O.aimBoth = false; }
+    if (aimPt && !O.grab && !over) { computeAim(aimPt, dt); O.aimHold = nowT + 600; if (keys.KeyQ && aimPt === 'c') O.aimBoth = true; else O.aimBoth = false; }
     if (O.aimT && nowT < O.aimHold && !O.grab) {
       const T = O.aimT, lc = chest.worldToLocal(T.clone()), sevL = gs.parts.leftArm.severed, sevR = gs.parts.rightArm.severed; let ia = lc.x >= 0 ? 1 : 0; if (ia === 0 && sevL) ia = 1; else if (ia === 1 && sevR) ia = 0;
       const mk2 = (i, ox) => [0, 0, null, T.x + ox, T.y, T.z]; O.armT = [null, null];
@@ -408,14 +413,14 @@ const ONL = (() => {
     c.fillStyle = '#ff4a3a'; c.beginPath(); c.moveTo(half + ax * 7, half + ay * 7); c.lineTo(half - ax * 4 + px * 4.5, half - ay * 4 + py * 4.5); c.lineTo(half - ax * 4 - px * 4.5, half - ay * 4 - py * 4.5); c.closePath(); c.fill(); c.restore();
   }
   const aimEl = document.createElement('div'); aimEl.id = 'aimR'; aimEl.innerHTML = '<i></i>'; document.body.appendChild(aimEl);
-  function aimStep() { // 手を伸ばすモードの表示: 届く範囲の輪（地面）と、狙っている点（緑=届く / 橙=遠い、距離つき）
+  function aimStep() { // 手を伸ばすモードの表示: 巨人のまわりの「届く球」と、狙っている点（緑=届く / 橙=遠い）
     const show = isG() && !over && O.aimOn, now = Date.now(); if (O.aimRing) O.aimRing.visible = show;
     if (!show) { aimEl.style.display = 'none'; return; }
-    const o = GI[0], sc = o.G.scale.x; if (!O.aimRing) { O.aimRing = new THREE.Mesh(new THREE.RingGeometry(.975, 1, 72), new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: .75, side: THREE.DoubleSide, depthWrite: false })); O.aimRing.rotation.x = -Math.PI / 2; S.add(O.aimRing); }
-    O.aimRing.visible = true; O.aimRing.position.set(o.G.position.x, .9, o.G.position.z); O.aimRing.scale.setScalar(O.AIM_R * sc); O.aimRing.material.color.setHex(O.aimOut ? 0xffa040 : 0x66e0ff);
+    const o = GI[0], sc = o.G.scale.x; if (!O.aimRing) { O.aimRing = new THREE.Group(); const w = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: 0x66e0ff, wireframe: true, transparent: true, opacity: .22, depthWrite: false })), f = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: .06, side: THREE.DoubleSide, depthWrite: false })); O.aimRing.add(w, f); S.add(O.aimRing); }
+    o.chest.getWorldPosition(aV); O.aimRing.visible = true; O.aimRing.position.copy(aV); O.aimRing.scale.setScalar(O.AIM_S * sc); O.aimRing.children.forEach(m => m.material.color.setHex(O.aimOut ? 0xffa040 : 0x66e0ff));
     if (O.aimMark && O.aimT && now < O.aimHold) { const cv = R.domElement.getBoundingClientRect(), W = cv.width || innerWidth, H = cv.height || innerHeight; V2.copy(O.aimMark).project(cam);
       if (V2.z < 1) { const col = O.aimOut ? '#ffa040' : '#6f6'; aimEl.style.display = 'block'; aimEl.style.borderColor = col; aimEl.style.color = col; aimEl.style.left = (cv.left + (V2.x * .5 + .5) * W) + 'px'; aimEl.style.top = (cv.top + (-V2.y * .5 + .5) * H) + 'px';
-        aimEl.firstChild.textContent = Math.round(O.aimDist) + 'm ' + (O.aimSnap ? '🎯' : '') + (O.aimOut ? '遠い' : '届く'); } else aimEl.style.display = 'none'; } else aimEl.style.display = 'none';
+        aimEl.firstChild.textContent = O.aimTxt || ''; } else aimEl.style.display = 'none'; } else aimEl.style.display = 'none';
   }
   function rescueStep() { // 倒れた仲間の名前・救助の進み具合（画面外は端に矢印）
     if (!O.coop) return; const cv = R.domElement.getBoundingClientRect(), W = cv.width || innerWidth, H = cv.height || innerHeight;
@@ -635,7 +640,7 @@ const ONL = (() => {
       O.acc = 0;
       if (giant) { const o = GI[0]; useG(o); const hnd = arms.map((A, i) => gs.parts[i === 0 ? 'leftArm' : 'rightArm'].severed ? null : A.wr.getWorldPosition(new THREE.Vector3()).toArray().map(r2)); // 手のワールド位置（掴み判定用）
         NET.send({ t: 'state', cq: gs.cq ? 1 : 0, hnd, p: [r2(G.position.x), r2(G.position.y), r2(G.position.z)], yaw: r2(gs.yaw), hy: r2(gs.yaw + headG.rotation.y), sp: r2(gs.spd || 0), run: gs.run > 0 ? 1 : 0,
-        sc: G.scale.x, hd: r2(headG.rotation.y), nh: r2(nape.getWorldPosition(V).y - G.position.y), ar: O.armT ? O.armT.map(a => a ? [r2(a[0]), r2(a[1]), a[2] == null ? null : r2(a[2])].concat(a.length > 5 ? [r2(a[3]), r2(a[4]), r2(a[5])] : []) : null) : null, limbs: LIMB_KEYS.map(k => gs.parts[k].severed ? 1 : 0) }); }
+        sc: G.scale.x, hd: r2(headG.rotation.y), nh: r2(nape.getWorldPosition(V).y - G.position.y), np: nape.getWorldPosition(V).toArray().map(r2), hp: headG.getWorldPosition(V).toArray().map(r2), hf: (() => { const hv = headG.getWorldPosition(new THREE.Vector3()), f = headG.localToWorld(new THREE.Vector3(0, 0, 1)).sub(hv); f.y = 0; return f.lengthSq() < 1e-6 ? null : (f.normalize(), [r2(f.x), r2(f.z)]); })(), ar: O.armT ? O.armT.map(a => a ? [r2(a[0]), r2(a[1]), a[2] == null ? null : r2(a[2])].concat(a.length > 5 ? [r2(a[3]), r2(a[4]), r2(a[5])] : []) : null) : null, limbs: LIMB_KEYS.map(k => gs.parts[k].severed ? 1 : 0) }); }
       else NET.send({ t: 'state', p: [r2(P.pos.x), r2(P.pos.y), r2(P.pos.z)], yaw: r2(P.yaw), pitch: r2(P.pitch), v: [r2(P.vel.x), r2(P.vel.y), r2(P.vel.z)],
         w: WIRES.map(w => w.a ? aw(w.a, V).toArray().map(r2) : (w.fly ? w.fly.pos.toArray().map(r2) : null)),
         f: (P.stuck ? 1 : 0) | (P.gr ? 2 : 0) | (P.dash ? 4 : 0) | (P.slash ? 8 : 0), g: r2(P.gasAmt || 0) });
