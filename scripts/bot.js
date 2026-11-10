@@ -87,8 +87,9 @@ async function selftest() {
   G.send({ t: 'event', k: 'guard' }); ok((await G.until(m => m.k === 'guard', 2000))?.left === 1, 'うなじ守り: 2回目（残り1回）'); await sleep(1900);
   G.send({ t: 'event', k: 'guard' }); ok((await G.until(m => m.k === 'guard', 2000))?.left === 0, 'うなじ守り: 3回目（残り0回）'); await sleep(1900);
   G.q = G.q.filter(m => m.k !== 'guard'); G.send({ t: 'event', k: 'guard' }); await sleep(400); ok(!G.q.some(m => m.k === 'guard'), 'うなじ守り: 回数を使い切ると発動できない');
-  A.send({ t: 'event', k: 'nape' }); // 守り1.5秒 + 余韻0.25秒のあと
-  const res = await A.until(m => m.t === 'result'); ok(res?.winner === 'soldiers' && res.reason === 'nape', '背後・至近距離のうなじ申告で兵士の勝ち（確定は0.25秒後）');
+  G.giant([0, 0, 0], { np: [0, 3, 12], hp: [0, 3, 12], hf: [0, 1], nh: 3 }); A.soldier([0, 4, 9]); await sleep(150); // うつ伏せ（うなじが地面近くで前方にずれている）
+  A.send({ t: 'event', k: 'nape' }); // 守り終了後
+  const res = await A.until(m => m.t === 'result'); ok(res?.winner === 'soldiers' && res.reason === 'nape', 'うつ伏せ（うなじが前方の地面近く）でも、うなじの実位置と頭の向きで判定され兵士の勝ち');
 
   // --- 再戦（役割交代あり）・再接続・巨人退出 ---
   A.send({ t: 'again', swap: true }); const st = await A.until(m => m.t === 'start');
