@@ -1,6 +1,6 @@
 'use strict';
 // オンライン通信とロビー。ゲーム本体(index.html のインラインscript)の後に読み込まれる。
-const NET_BUILD = '2026-11-14a'; // 読み込まれている net.js の版（ロビー画面の下に表示）
+const NET_BUILD = '2026-11-14b'; // 読み込まれている net.js の版（ロビー画面の下に表示）
 const NET = (() => {
   const $ = id => document.getElementById(id), SK = 'gvsSeat';
   const N = { ws: null, open: false, id: null, code: null, token: null, room: null, match: null, rtt: 0, handlers: {}, want: false, retry: 0, wasIn: false };
@@ -61,7 +61,7 @@ const NET = (() => {
     go.addEventListener('touchmove', e => { const t = e.changedTouches[0]; if (Math.hypot(t.clientX - sx, t.clientY - sy) > 10) ok = false; }, { passive: true });
     go.addEventListener('touchend', e => { if (!ok) return; ok = false; e.preventDefault(); e.stopPropagation(); N.openLobby(); }, { passive: false }); }
   $('lbCreate').onclick = () => { N.wasIn = 'fresh'; N.send({ t: 'create', name: name() }); };
-  $('lbJoin').onclick = () => { N.wasIn = 'fresh'; N.send({ t: 'join', code: $('lbCode').value.trim().toUpperCase(), name: name() }); };
+  $('lbJoin').onclick = () => { N.wasIn = 'fresh'; N.send({ t: 'join', code: $('lbCode').value.trim(), name: name() }); };
   $('roleG').onclick = () => N.send({ t: 'role', role: 'giant' });
   $('roleS').onclick = () => N.send({ t: 'role', role: 'soldier' });
   $('lbStart').onclick = () => N.send({ t: 'start' });
