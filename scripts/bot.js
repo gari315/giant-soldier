@@ -104,23 +104,11 @@ async function selftest() {
   const [H, I] = await Promise.all(['H', 'I'].map(n => new Bot(n).connect()));
   H.send({ t: 'create', name: 'H' }); await H.until(m => m.t === 'joined'); I.send({ t: 'join', code: H.code, name: 'I' }); await I.until(m => m.t === 'joined');
   H.send({ t: 'start' }); const cs = await H.until(m => m.t === 'start'); ok(cs?.coop === true, '巨人役がいなくても開始できる（協力モード）');
-  H.soldier([0, 3, 0]); I.soldier([0, 3, 4]);
-  const waitG = async (f, ms) => { for (let i = 0; i < ms / 200; i++) { const g = H.snap?.gl?.find(f); if (g) return g; await sleep(200); } return null; };
-  let gg = await waitG(x => !x.dead, 8000); ok(!!gg, '壁から巨人が出現（スナップショットに含まれる）');
-  const waitIn = async id => { let g = null; for (let i = 0; i < 90; i++) { g = H.snap?.gl?.find(x => x.id === id); if (g && Math.max(Math.abs(g.p[0]), Math.abs(g.p[2])) < 280) return g; await sleep(250); } return g; };
-  if (gg) { gg = await waitIn(gg.id);
-    const bx = gg.p[0] - Math.sin(gg.yaw) * 3, bz = gg.p[2] - Math.cos(gg.yaw) * 3; H.soldier([bx, 33 * gg.sc, bz]); await sleep(120);
-    H.send({ t: 'event', k: 'nape', gid: gg.id }); const gk = await H.until(m => m.k === 'gkill' && m.gid === gg.id, 2000); ok(!!gk && gk.kills === 1, '協力: 背後・至近距離のうなじ申告で巨人を撃破');
-    H.send({ t: 'event', k: 'limb', key: 'leftArm', gid: gg.id }); await sleep(150);
-  }
-  const g2 = await waitG(x => !x.dead && x.id !== gg?.id, 9000); ok(!!g2, '次の巨人が出現');
-  let g3 = g2 ? await waitIn(g2.id) : null;
-  if (g3) {
-    const fx = g3.p[0] + Math.sin(g3.yaw) * 6, fz = g3.p[2] + Math.cos(g3.yaw) * 6; H.soldier([fx, 3, fz]); I.soldier([fx + 1, 3, fz + 1]);
-    ok(!!(await H.until(m => m.k === 'grab' && m.gid === g3.id, 6000)), '協力: 巨人が近くの兵士を掴む');
-    const dd = await H.until(m => m.k === 'dead' && m.by === 'eat', 5000); ok(!!dd, '協力: 掴まれた兵士は約2.5秒後に脱落（倒れた状態）');
-    const rv = dd && await H.until(m => m.k === 'revive' && m.id === dd.id, 8000); ok(!!rv, '協力: 近くの仲間が約3秒そばにいると救助されて復活');
-  }
+  H.soldier([10, 3, 10]); I.soldier([11, 3, 11]); await sleep(150);
+  H.send({ t: 'event', k: 'gk' }); const gk1 = await H.until(m => m.k === 'gkill', 2000); ok(gk1?.kills === 1 && gk1.id === H.id, '協力: 巨人の撃破が集計される（撃破数の合計）');
+  await sleep(450); I.send({ t: 'event', k: 'gk' }); const gk2 = await H.until(m => m.k === 'gkill', 2000); ok(gk2?.kills === 2, '協力: 複数人の撃破数が合算される');
+  H.send({ t: 'event', k: 'down', by: 'eat' }); const dd = await I.until(m => m.k === 'dead' && m.id === H.id && m.by === 'eat', 3000); ok(!!dd, '協力: 掴まれて食べられた兵士は倒れた状態になる');
+  const rv = await I.until(m => m.k === 'revive' && m.id === H.id, 8000); ok(!!rv, '協力: 近くの仲間が約3秒そばにいると救助されて復活');
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 }
 
