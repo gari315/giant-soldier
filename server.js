@@ -110,9 +110,11 @@ function dropPlayer(room, p) {
 function giantOK(room, g) { return room.phase === 'playing' && g.alive !== false && g.st; }
 const LIMBS = ['leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
 const h2 = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
-function napeAt(e, s) { // e: 巨人の状態スナップショット
-  const sc = e.sc, nh = e.nh > 0 ? e.nh : C.NAPE_H * sc, nape = [e.p[0], e.p[1] + nh, e.p[2]];
+function napeAt(e, s) { // e: 巨人の状態スナップショット。うなじの実際の位置（np）と頭の向き（hp/hf）があればそれを使う（うつ伏せ・這い状態でも判定できる）
+  const sc = e.sc, nape = e.np || [e.p[0], e.p[1] + (e.nh > 0 ? e.nh : C.NAPE_H * sc), e.p[2]];
   if (Math.hypot(s.st.p[0] - nape[0], s.st.p[1] - nape[1], s.st.p[2] - nape[2]) > C.NAPE_R * sc + C.SLACK) return false;
+  if (e.hp && e.hf) return (s.st.p[0] - e.hp[0]) * e.hf[0] + (s.st.p[2] - e.hp[2]) * e.hf[1] < 0; // クライアントの napeBehind と同じ（頭の位置と向き）
+  if (e.hp) return true; // 頭の向きが定まらない姿勢（真上/真下を向く）は背後条件なし
   const fx = Math.sin(e.hy), fz = Math.cos(e.hy);
   return (s.st.p[0] - e.p[0]) * fx + (s.st.p[2] - e.p[2]) * fz < 0; // 背後
 }
@@ -176,9 +178,9 @@ function handleState(room, p, m) {
     p.st = { p: pos, yaw: num(m.yaw, 100), pitch: num(m.pitch, 4), v: vec(m.v) || [0, 0, 0], w: [vec(m.w && m.w[0]), vec(m.w && m.w[1])], f: m.f | 0, g: num(m.g, 1000) };
   } else {
     p.st = { p: pos, yaw: num(m.yaw, 100), hy: num(m.hy, 100), sp: num(m.sp, 200), run: m.run ? 1 : 0, sc: Math.max(.5, Math.min(3, num(m.sc, 10) || 1)),
-      limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), cq: m.cq ? 1 : 0, hnd: [0, 1].map(i => vec(m.hnd && m.hnd[i])), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), guard: 0,
+      limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), cq: m.cq ? 1 : 0, hnd: [0, 1].map(i => vec(m.hnd && m.hnd[i])), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), np: vec(m.np), hp: vec(m.hp), hf: (Array.isArray(m.hf) && m.hf.length === 2) ? [num(m.hf[0], 1), num(m.hf[1], 1)] : null, guard: 0,
       ar: [0, 1].map(i => (m.ar && Array.isArray(m.ar[i])) ? [num(m.ar[i][0], 1), num(m.ar[i][1], 1), m.ar[i][2] == null ? null : num(m.ar[i][2], 30)].concat(m.ar[i].length > 5 ? [num(m.ar[i][3], 420), num(m.ar[i][4], 420), num(m.ar[i][5], 420)] : []) : null) }; // 腕の操作: [横,上下,前方距離(,目標のワールド座標x,y,z)] または null
-    (p.hist = p.hist || []).push({ t: now(), p: pos, hy: p.st.hy, sc: p.st.sc, nh: p.st.nh }); if (p.hist.length > 14) p.hist.shift(); // うなじ判定の遅延補償用
+    (p.hist = p.hist || []).push({ t: now(), p: pos, hy: p.st.hy, sc: p.st.sc, nh: p.st.nh, np: p.st.np, hp: p.st.hp, hf: p.st.hf }); if (p.hist.length > 14) p.hist.shift(); // うなじ判定の遅延補償用
   }
 }
 
