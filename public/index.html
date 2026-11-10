@@ -742,7 +742,7 @@ function updSpears(dt){spCd-=dt;
    if(p.y<.3||Math.max(Math.abs(p.x),Math.abs(p.z))>WALL_IN){hit=true;boom(p,2);break;}
    for(const o of GI){if(o.gs.dead)continue;const np=o.nape.getWorldPosition(new THREE.Vector3());
     if(p.distanceTo(np)<3.4*Math.max(.85,o.G.scale.x)&&napeBehind(o,p)){const pv=P.vel.clone();useG(o);killGiant();P.vel.copy(pv);boom(np,7);hit=true;break;}
-    for(const g of o.GS){if(!g.partKey&&window.ONL&&ONL.active)continue;if(g.partKey&&o.gs.parts[g.partKey].severed)continue;const c=g[0].localToWorld(new THREE.Vector3(g[1],g[2],g[3]));if(p.distanceTo(c)<g[4]*o.G.scale.x){if(g.partKey){if(window.ONL)ONL.viaSpear=true;severLimb(o,g.partKey,p.clone(),true);if(window.ONL)ONL.viaSpear=false;}else{addWound(o,g,p.clone(),c);damageGiant(o,30);}o.gs.hurt=18;o.gs.stag=Math.max(o.gs.stag,1.4);o.gs.windup=0;o.gs.recover=Math.max(o.gs.recover,.8);boom(p,5);hit=true;break;}}
+    for(const g of o.GS){if(!g.partKey&&onlV())continue;if(g.partKey&&o.gs.parts[g.partKey].severed)continue;const c=g[0].localToWorld(new THREE.Vector3(g[1],g[2],g[3]));if(p.distanceTo(c)<g[4]*o.G.scale.x){if(g.partKey){if(window.ONL)ONL.viaSpear=true;severLimb(o,g.partKey,p.clone(),true);if(window.ONL)ONL.viaSpear=false;}else{addWound(o,g,p.clone(),c);damageGiant(o,30);}o.gs.hurt=18;o.gs.stag=Math.max(o.gs.stag,1.4);o.gs.windup=0;o.gs.recover=Math.max(o.gs.recover,.8);boom(p,5);hit=true;break;}}
     if(hit)break;}
    if(hit)break;
    buildingList.forEach((b,bi)=>{if(hit||b.destroyed||b.collapsing)return;const d=Math.max(Math.abs(p.x-b.px),Math.abs(p.z-b.pz)),rw=b.w*.559;
@@ -865,7 +865,7 @@ $('camReset').onclick=()=>{setCam('dist',9,3,22);setCam('height',1.5,-1,6);};
 $('camView').onclick=()=>{setView(!tp);previewCam();};
 $('titleBtn').onclick=returnToTitle;
 
-function struggle(){if(window.ONL&&ONL.active){shake=Math.max(shake,.3);return;}const _h=eatenBy();if(_h)useG(_h);gs.str=(gs.str||0)+1;shake=Math.max(shake,.3);if(gs.str>=5&&gs.eatT<2.8){P.eaten=false;gs.grab=3;gs.rt=0;gs.gt=5;gs.str=0;held.visible=false;const d=new THREE.Vector3(P.pos.x-G.position.x,0,P.pos.z-G.position.z).normalize();P.vel.copy(d).multiplyScalar(26);P.vel.y=12;P.gr=false;cd2=1.5;cd=.3;spark(P.pos,0xffffff);}}
+function struggle(){if(onlV()){shake=Math.max(shake,.3);return;}const _h=eatenBy();if(_h)useG(_h);gs.str=(gs.str||0)+1;shake=Math.max(shake,.3);if(gs.str>=5&&gs.eatT<2.8){P.eaten=false;gs.grab=3;gs.rt=0;gs.gt=5;gs.str=0;held.visible=false;const d=new THREE.Vector3(P.pos.x-G.position.x,0,P.pos.z-G.position.z).normalize();P.vel.copy(d).multiplyScalar(26);P.vel.y=12;P.gr=false;cd2=1.5;cd=.3;spark(P.pos,0xffffff);}}
 // ---- 剣の振り: 振りかぶり→切り下ろし→戻し。二刀は交差し、振るたびに左右が入れ替わる ----
 const easeO=t=>1-Math.pow(1-t,3),smt=t=>t*t*(3-2*t);
 function swingArc(t){if(t>=1)return 0;if(t<.22)return -easeO(t/.22);if(t<.52)return -1+2*easeO((t-.22)/.3);return 1-smt((t-.52)/.48);}
@@ -934,7 +934,7 @@ function startWave(){wave++;waveCleared=false;waveStart=tw;clearDetachedLimbs();
  GI.forEach((o,i)=>{resetGiant(o,i,pts[i%pts.length]);restyle(o);useG(o);gs.trait=waveTrait(gs.trait,wave);applyWaveDef(o,i);gs.seen=false;gs.mode='goLast';gs.last.set(P.pos.x,1.7,P.pos.z);gs.goal.set(P.pos.x,0,P.pos.z);});
  P.gasAmt=100;P.sp=4;$('rpl').style.display='none';$('pauseBtn').style.display='block';popup('WAVE '+wave+' 開始！ ガス・雷槍を補給','big');sfx('wave');wstReset();setEnv(waveDef(wave).env);announceWave();if(wave>=3)ach('w3');if(wave>=6)ach('w6');if(wave>=10)ach('w10');}
 function recordScore(){let b=0;try{b=+localStorage.getItem('giantBest')||0;if(score>b){b=score;localStorage.setItem('giantBest',b);}}catch(e){b=Math.max(b,score);}return b;}
-function killGiant(){if(window.ONL&&ONL.active)return;if(!gs.dead){sfx('die',G.position);hKills++;onKill(gs,G);const c=LIMB_KEYS.filter(k=>gs.parts[k].severed).length;addScore(1000+200*c,c>=4?'達磨討伐':c>0?'討伐 (四肢'+c+'本切断)':'討伐');}gs.pk=0;gs.dead=1;gs.deadT=0;gs.grab=0;gs.windup=0;gs.recover=999;P.slash=false;P.vel.set(0,6,0);releaseWires();if(!horde&&GI.every(o=>o.gs.dead)){$('rpl').style.display='block';$('pauseBtn').style.display='none';}}
+function killGiant(){if(onlV())return;if(window.ONL&&ONL.active&&ONL.coop&&!gs.dead)ONL.kill();if(!gs.dead){sfx('die',G.position);hKills++;onKill(gs,G);const c=LIMB_KEYS.filter(k=>gs.parts[k].severed).length;addScore(1000+200*c,c>=4?'達磨討伐':c>0?'討伐 (四肢'+c+'本切断)':'討伐');}gs.pk=0;gs.dead=1;gs.deadT=0;gs.grab=0;gs.windup=0;gs.recover=999;P.slash=false;P.vel.set(0,6,0);releaseWires();if(!horde&&GI.every(o=>o.gs.dead)){$('rpl').style.display='block';$('pauseBtn').style.display='none';}}
 const tmp=new THREE.Vector3(),fx=[];
 function mkPool(n,size,col,op){const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),gr=x.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=gr;x.fillRect(0,0,64,64);
  const tex=new THREE.CanvasTexture(c),L=[];
@@ -1135,14 +1135,22 @@ function segmentDistanceSq(p1,q1,p2,q2){
 }
 // ---- 巨人の体: 触れたらどこでも斬れる(跳ね飛ばされない)。傷跡と血が残り、傷が積み重なると(体力0で)倒れる。四肢の切断はダッシュの通過だけ ----
 const woundMat=new THREE.MeshBasicMaterial({color:0x7a0e0e,transparent:true,opacity:.92,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,side:THREE.DoubleSide}),woundGeo=new THREE.PlaneGeometry(1,.16),_zAxis=new THREE.Vector3(0,0,1);
-function damageGiant(o,amt){const st=o.gs;if(st.dead)return;if(window.ONL&&ONL.active)return; // オンライン: 巨人の体力は使わない（勝敗はうなじ斬りのみ）
+function onlV(){return !!(window.ONL&&ONL.active&&!ONL.coop);} // オンライン対戦（巨人1人 vs 兵士）のときだけ true。協力モードはソロと同じ処理
+function damageGiant(o,amt){const st=o.gs;if(st.dead)return;if(onlV())return; // 対戦: 巨人の体力は使わない（勝敗はうなじ斬りのみ）
  st.hp-=amt;if(st.hp<=0){st.hpKill=true;const pv=P.vel.clone();useG(o);killGiant();P.vel.copy(pv);}}
 function showBodyHp(o){const st=o.gs;$('limbTitle').textContent=st.trait.name+'　体の傷';$('limbFill').style.width=Math.max(0,st.hp/st.hpMax*100)+'%';$('limbNote').textContent='体力 '+Math.max(0,Math.round(st.hp))+' / '+st.hpMax;const el=$('limbStatus');el.style.display='block';el.style.opacity='1';limbHudUntil=performance.now()+2200;}
 function addWound(o,g,pt,c){const par=g[0],lp=par.worldToLocal(pt.clone()),lc=par.worldToLocal(c.clone()),n=lp.clone().sub(lc).normalize();
  const m=new THREE.Mesh(woundGeo,woundMat);m.scale.set(1.6+Math.random()*2.2,1+Math.random()*.8,1);m.position.copy(lp).addScaledVector(n,.06);m.quaternion.setFromUnitVectors(_zAxis,n);m.rotateZ(Math.random()*6.28);
  par.add(m);(o.wounds=o.wounds||[]).push(m);if(o.wounds.length>36){const old=o.wounds.shift();if(old.parent)old.parent.remove(old);}}
+function bumpGiants(){if(!(window.ONL&&ONL.active))return;const dash=!!P.dash&&P.vel.length()>=DASH_MIN_SPEED;
+ for(const o of GI){if(o.gs.dead||!o.G.visible)continue;const sc=o.G.scale.x;
+  const nw=o.nape.getWorldPosition(new THREE.Vector3());if(P.pos.distanceTo(nw)<7*sc)continue; // うなじ付近は近づけるように
+  for(const g of o.GS){const pk=g.partKey;if(pk&&o.gs.parts[pk].severed)continue;if(pk&&dash)continue; // 四肢を斬る突進はそのまま通す
+   sph.set(g[1],g[2],g[3]);g[0].localToWorld(sph);V.set(P.pos.x,P.pos.y-.8,P.pos.z);const Rr=g[4]*sc+1.0,d=V.distanceTo(sph);
+   if(d<Rr){const n=V.clone().sub(sph);if(n.lengthSq()<1e-6)n.set(0,1,0);n.normalize();P.pos.addScaledVector(n,Rr-d+.05);const vn=P.vel.dot(n);if(vn<0)P.vel.addScaledVector(n,-vn*1.7);P.vel.addScaledVector(n,4);
+    if(tw-(P.bumpT||-9)>.3){P.bumpT=tw;spark(sph.clone().addScaledVector(n,g[4]*sc),0xffe0b0);shake=Math.max(shake,.3);}}}}}
 function cutBody(o,g,c,pp){
- const st=o.gs;if(st.dead)return;if(window.ONL&&ONL.active)return; // オンライン: 体への接触斬りは無効（攻撃はうなじ・四肢のみ）
+ const st=o.gs;if(st.dead)return;if(onlV())return; // 対戦: 体への接触斬りは無効（攻撃はうなじ・四肢のみ）。弾き返しは bumpGiants で行う
 const dash=!!P.dash&&P.vel.length()>=DASH_MIN_SPEED;
  if(g.partKey&&dash)return;
  const dir=pp.clone().sub(c),dl=dir.length()||1;dir.multiplyScalar(1/dl);const pt=c.clone().addScaledVector(dir,g[4]*o.G.scale.x*.95);
@@ -1151,7 +1159,7 @@ const dash=!!P.dash&&P.vel.length()>=DASH_MIN_SPEED;
  spark(pt,0xff9a70);sfx('chop',pt,dash?2:1,.05);shake=Math.max(shake,.22);triggerSwing(dash?1.6:1);
  addScore(dash?40:20,'体を斬る');st.hurt=Math.max(st.hurt,.5);
  damageGiant(o,dash?14:7);if(!st.dead)showBodyHp(o);}
-function severLimb(o,key,point,noSwing){if(window.ONL&&ONL.active&&!ONL.applying&&!o.gs.parts[key].severed)ONL.sever(key,o);
+function severLimb(o,key,point,noSwing){if(onlV()&&!ONL.applying&&!o.gs.parts[key].severed)ONL.sever(key,o);
  const st=o.gs,part=st.parts[key];
  if(st.dead||!part||part.severed)return false;
  part.damage=part.durability;part.severed=true;part.cooldown=999;part.inContact=false;
@@ -1578,6 +1586,7 @@ function hordeGoal(q,px,pz){let x=0,z=0;for(let t=0;t<12;t++){x=(Math.random()-.
 function nearGate(){if(window.ONL&&ONL.active)return null;if(horde&&GATES.every(g=>g.target))return null;let best=null,bd=1e9;for(const g of GATES){if(g.target)continue;const d=Math.hypot(P.pos.x-g.gx*WALL_IN,P.pos.z-g.gz*WALL_IN);if(d<bd){bd=d;best=g;}}return bd<75&&Math.max(Math.abs(P.pos.x),Math.abs(P.pos.z))<WALL_IN+2?best:null;}
 function inOpenGate(x,z,y,m){if(y>=GATE_H-3)return false;const L=GATE_W/2-6+m;for(const g of GATES){if(g.open<.9)continue;if(g.gx&&x*g.gx>WALL_IN-8&&Math.abs(z)<L)return true;if(g.gz&&z*g.gz>WALL_IN-8&&Math.abs(x)<L)return true;}return false;}
 function openGate(){const g=nearGate();if(!g||over)return false;g.target=1;sfx('wave');if(!horde){horde=true;hT=.6;hKills=0;waveCleared=false;GI.forEach(o=>{if(o.gs.dead)return;o.gs.hrun=true;o.gs.run=5;hordeGoal(o.gs,o.G.position.x,o.G.position.z);});$('rpl').style.display='none';$('pauseBtn').style.display='block';popup('門が開いた！ 巨人の群れが押し寄せる！','big');popup('ウェーブ制は終了。生き残って討伐を重ねろ');}else popup('別の門が開いた！','big');return true;}
+function startCoopHorde(){horde=true;hT=1.2;hKills=0;waveCleared=false;GATES.forEach(g=>{g.target=1;});GI.forEach(o=>{o.gs.dead=1;o.gs.deadT=99;o.G.visible=false;o.G.position.set(9000,0,9000);});$('rpl').style.display='none';$('pauseBtn').style.display='block';sfx('wave');popup('門が開いた！ 巨人の群れが押し寄せる！','big');}
 function resetHorde(){horde=false;hT=0;hKills=0;GATES.forEach(g=>{g.open=0;g.target=0;g.door.position.y=0;});while(GI.length>3){const o=GI.pop();o.G.visible=false;HPOOL.push(o);}}
 // 巨人の種類(大きさ・速さ・性格)。無関心型は攻撃されるまで人間を無視する
 const HKINDS=[
@@ -1791,12 +1800,12 @@ const dx=P.pos.x-G.position.x,dz=P.pos.z-G.position.z,dist=Math.hypot(dx,dz);
    fig.visible=false;{const W=arms[gs.arm].wr,ml=W.worldToLocal(headG.localToWorld(new THREE.Vector3(0,-1.2,2.7)));if(Math.abs(ml.x)>.6)gs.hs=Math.sign(ml.x);
     held.position.lerp(new THREE.Vector3(0,-1,.9),Math.min(1,10*dt));held.rotation.set(Math.sin(e*20)*.25*(e<2.1?1:.4),0,-gs.hs*Math.PI/2);held.userData.head.visible=e<3;}shake=Math.max(shake,.08);
    if(e>3&&!gs.ch){gs.ch=1;shake=1;for(let q=0;q<4;q++)spark(mw,0xaa1010);}
-   if(e>4.3)finish(false,'巨人に食べられた。');}
+   if(e>4.3){if(window.ONL&&ONL.active&&ONL.coop)ONL.selfDown('eat');else finish(false,'巨人に食べられた。');}}
   else if(gs.grab==3){gs.rt+=dt;if(gs.rt>1.2*(1-.6*gs.rage))gs.grab=0;}
    }
   if(P.slash){useG(P.sg||GI[0]);P.slashT+=dt;if(P.slashT>.42&&!P.sw2){P.sw2=true;triggerSwing(2);sfx('chop',G.position,2,.12);}const T=nape.getWorldPosition(new THREE.Vector3()),ddx=T.x-P.pos.x,ddz=T.z-P.pos.z,lh=Math.hypot(ddx,ddz);
    let ty=Math.atan2(-ddx,-ddz)-P.yaw;ty=Math.atan2(Math.sin(ty),Math.cos(ty));P.yaw+=ty*Math.min(1,10*dt);P.pitch+=(Math.atan2(T.y-P.pos.y,lh)-P.pitch)*Math.min(1,10*dt);
-   if(Math.random()<.35)spark(T,0xcc1515);for(let q=0;q<1;q++)blood.emit(T,new THREE.Vector3((Math.random()-.5)*16,Math.random()*14,(Math.random()-.5)*16),1.1,30);shake=.25;if(P.slashT>.9){if(window.ONL&&ONL.active)ONL.nape(P.sg);else killGiant();}}
+   if(Math.random()<.35)spark(T,0xcc1515);for(let q=0;q<1;q++)blood.emit(T,new THREE.Vector3((Math.random()-.5)*16,Math.random()*14,(Math.random()-.5)*16),1.1,30);shake=.25;if(P.slashT>.9){if(onlV())ONL.nape(P.sg);else killGiant();}}
   if(!P.eaten&&!P.slash){
    const c=Math.cos(P.yaw),s=Math.sin(P.yaw);F.set(-s,0,-c);Rt.set(c,0,-s);
    let mx=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,mz=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y;
@@ -1882,6 +1891,7 @@ const dx=P.pos.x-G.position.x,dz=P.pos.z-G.position.z,dist=Math.hypot(dx,dz);
       P.pos.y=WALL_H+1.7;P.vel.set(0,0,0);P.gr=true;releaseWires();P.stuck=false;P.touch=false;P.ns=.3;spark(P.pos.clone(),0xffe0b0);}
     }
     if(P.stuck&&!P.touch)P.stuck=false;
+    bumpGiants(); // 巨人の体: すり抜けそうになったら弾き返す（四肢を斬る突進中とうなじ付近は通す）
     // giant body: knocked back (no damage)
     if(cd2<=0)outerK:for(const _o of GI){if(_o.gs.dead)continue;for(const g of _o.GS){if(g.partKey&&_o.gs.parts[g.partKey].severed)continue;sph.set(g[1],g[2],g[3]);g[0].localToWorld(sph);V.set(P.pos.x,P.pos.y-.8,P.pos.z);
      if(V.distanceTo(sph)<g[4]*_o.G.scale.x+1.1){cutBody(_o,g,sph.clone(),V.clone());cd2=.4;break outerK;}}}
