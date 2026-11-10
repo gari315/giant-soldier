@@ -14,7 +14,7 @@ const C = {
   GRAB_HAND_R: 5,         // 掴み: 巨人の手（クライアント申告の手の位置）と兵士の距離 = R*スケール + SLACK。手が触れれば向き・状況を問わず掴める
   KICK_R: 16, KICK_H: 22, KICK_HIT: 1130, KICK_LOCK: 1800, // 蹴り: 全方向（360°）・半径(スケール倍)・届く高さ・発生までの時間・連打できない最短間隔(モーション分)
   GUARD_MS: 1500, GUARD_CD: 0, GUARD_MAX: 3, // うなじ守り: クールダウンなし・1試合あたりの使用回数に上限
-  COOP_GOAL: 20, COOP_CAP: 10, AI_GRAB_CD: 5000, RESCUE_R: 9, RESCUE_S: 3, RESCUE_WINDOW: 60000, // 協力モード: 倒す目標数・同時に出る巨人の上限・掴みの間隔・救助の範囲/秒数/猶予
+  COOP_PER: 12, RESCUE_R: 9, RESCUE_S: 3, RESCUE_WINDOW: 60000, // 協力モード: 兵士1人あたりの撃破目標・救助の範囲/秒数/猶予（巨人はソロと同じ処理を各クライアントで動かす）
   SPEAR_RANGE: 200,       // 雷槍での四肢切断は遠くから届く（通常の切断は 25×スケール以内）
 
   ROAR_CD: 14000, ROAR_MS: 4000,                           // 咆哮: 全兵士の位置が巨人に見える時間
@@ -67,30 +67,29 @@ function addPlayer(room, name, ws) {
   return p;
 }
 function startMatch(room) {
-  room.coop = !giantOf(room); room.gs = new Map(); room.kills = 0; room.gidSeq = 0; room.spawnAt = now() + 2500; room.lastTick = now(); // 巨人役がいなければ協力モード（壁を開けて巨人の群れが押し寄せる）
+  room.coop = !giantOf(room); room.kills = 0; room.goal = C.COOP_PER * Math.max(1, soldiersOf(room).length); room.lastTick = now(); // 巨人役がいなければ協力モード（壁を開けて巨人の群れが押し寄せる）
   room.phase = 'playing'; room.grab = null; room.kickAt = 0; room.kickLock = 0; room.guardLeft = C.GUARD_MAX; room.guardUntil = 0; room.guardReady = 0; room.napePending = null; room.roarReady = 0; room.collapsed = new Set(); room.limbs = new Set(); room.t0 = now();
   let i = 0;
   for (const p of room.players.values()) { p.alive = true; p.downed = false; p.rp = 0; p.st = null; p.idx = p.role === 'soldier' ? i++ : 0; }
-  bcast(room, { t: 'start', coop: room.coop, goal: C.COOP_GOAL, gl: C.GUARD_MAX, seed: crypto.randomInt(1e9), players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, role: p.role, idx: p.idx })) });
+  bcast(room, { t: 'start', coop: room.coop, goal: room.goal, gl: C.GUARD_MAX, seed: crypto.randomInt(1e9), players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, role: p.role, idx: p.idx })) });
   roster(room);
 }
 function endMatch(room, winner, reason) {
   if (room.phase !== 'playing') return;
   room.phase = 'result'; room.grab = null; room.napePending = null; room.kickAt = 0;
-  bcast(room, { t: 'result', winner, reason, coop: !!room.coop, kills: room.kills, goal: C.COOP_GOAL, secs: Math.round((now() - room.t0) / 1000) });
+  bcast(room, { t: 'result', winner, reason, coop: !!room.coop, kills: room.kills, goal: room.goal, secs: Math.round((now() - room.t0) / 1000) });
   roster(room);
 }
 function checkEnd(room) {
   if (room.phase !== 'playing') return;
   if (!soldiersOf(room).some(s => s.alive)) endMatch(room, 'giant', 'allDown');
-  else if (room.coop && room.kills >= C.COOP_GOAL) endMatch(room, 'soldiers', 'clear');
+  else if (room.coop && room.kills >= room.goal) endMatch(room, 'soldiers', 'clear');
 }
 function kill(room, p, by) {
   if (!p.alive) return;
   p.alive = false;
   if (room.coop && by !== 'left') { p.downed = true; p.dpos = p.st ? p.st.p.slice() : [0, 3, 0]; p.dT0 = now(); p.rp = 0; } // 協力: 倒れた仲間は一定時間、味方が近くにいれば助けられる
   if (room.grab && room.grab.target === p.id) room.grab = null;
-  if (room.gs) room.gs.forEach(gi => { if (gi.grab && gi.grab.target === p.id) gi.grab = null; });
   bcast(room, { t: 'event', k: 'dead', id: p.id, by });
   checkEnd(room);
 }
@@ -123,12 +122,9 @@ function validNape(room, s, g) { // g: 巨人（人間のプレイヤー or AI�
 function handleEvent(room, p, m) {
   if (room.phase !== 'playing') return;
   const g = giantOf(room);
-  if (room.coop && p.role === 'soldier' && (m.k === 'nape' || m.k === 'limb')) { // 協力: AI巨人への申告（gid で対象を指定）
-    const gi = room.gs.get(m.gid); if (!gi || !gi.alive || !gi.st || !p.alive || !p.st) return;
-    if (m.k === 'nape') { if (!napeAt(gi.st, p) && !(gi.hist || []).some(h => now() - h.t < 500 && napeAt(h, p))) return; killGiantAI(room, gi, p); return; }
-    const li = LIMBS.indexOf(m.key); if (li < 0 || gi.limbs[li]) return; if (h2(p.st.p, gi.st.p) > (m.sp ? C.SPEAR_RANGE : 25) * gi.sc + C.SLACK) return;
-    gi.limbs[li] = 1; bcast(room, { t: 'event', k: 'limb', key: m.key, id: p.id, gid: gi.id });
-    if (gi.grab && (li === 0 || li === 1)) releaseAI(room, gi, 2500); // 腕を斬ると掴まれていた仲間を解放
+  if (room.coop && p.role === 'soldier') { // 協力: 巨人は各クライアントがソロと同じ処理で動かす。サーバーは撃破数の集計と、倒れた仲間の救助だけを管理
+    if (m.k === 'gk') { const t0 = now(); if (!p.alive || t0 - (p.lastGk || 0) < 400) return; p.lastGk = t0; room.kills++; bcast(room, { t: 'event', k: 'gkill', id: p.id, kills: room.kills }); checkEnd(room); return; }
+    if (m.k === 'down') { if (p.alive) kill(room, p, 'eat'); return; }
     return;
   }
   if (m.k === 'nape' && p.role === 'soldier') {
@@ -212,7 +208,7 @@ wss.on('connection', ws => {
         if (p.ws && p.ws !== ws) { p.ws.room = null; p.ws.close(); }
         p.ws = ws; p.connected = true; p.discAt = 0; ws.pid = p.id; ws.room = room.code;
         send(p, { t: 'joined', id: p.id, token: p.token, code: room.code, resumed: true });
-        if (room.phase === 'playing') send(p, { t: 'start', resumed: true, coop: !!room.coop, goal: C.COOP_GOAL, gl: room.guardLeft, players: [...room.players.values()].map(x => ({ id: x.id, name: x.name, role: x.role, idx: x.idx || 0 })), dead: [...room.players.values()].filter(x => !x.alive).map(x => x.id) });
+        if (room.phase === 'playing') send(p, { t: 'start', resumed: true, coop: !!room.coop, goal: room.goal, gl: room.guardLeft, players: [...room.players.values()].map(x => ({ id: x.id, name: x.name, role: x.role, idx: x.idx || 0 })), dead: [...room.players.values()].filter(x => !x.alive).map(x => x.id) });
         return roster(room);
       } else return;
       send(p, { t: 'joined', id: p.id, token: p.token, code: room.code });
@@ -252,42 +248,9 @@ wss.on('connection', ws => {
 });
 
 // ---- 協力モード: 壁を開けて押し寄せる AI 巨人 / 倒れた仲間の救助 ----
-const GATES = [[0, -1], [0, 1], [-1, 0], [1, 0]], KINDS = [{ n: '歩行型', w: 3, sc: [.95, 1.15], sp: 1 }, { n: '走行型', w: 2, sc: [.9, 1.1], sp: 1.7 }, { n: '大型', w: 1, sc: [1.4, 1.7], sp: .8 }, { n: '小型', w: 3, sc: [.58, .72], sp: 1.5 }];
-const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
-function spawnGiantAI(room) {
-  const gt = GATES[crypto.randomInt(4)], lat = (Math.random() - .5) * 40, far = 390, ws = KINDS.reduce((a, k) => a + k.w, 0); let r = Math.random() * ws, kind = KINDS[0]; for (const k of KINDS) { r -= k.w; if (r <= 0) { kind = k; break; } }
-  const sc = kind.sc[0] + Math.random() * (kind.sc[1] - kind.sc[0]), id = 'g' + (++room.gidSeq);
-  const gi = { id, kind, sc, gate: gt, p: [gt[0] ? gt[0] * far : lat, 0, gt[1] ? gt[1] * far : lat], yaw: Math.atan2(-gt[0], -gt[1]), spd: 0, limbs: [0, 0, 0, 0], alive: true, entering: true, grab: null, nextGrab: now() + 1500, diedAt: 0, st: null, hist: [] };
-  room.gs.set(id, gi); bcast(room, { t: 'event', k: 'gspawn', gid: id, gate: gt });
-}
-function releaseAI(room, gi, cd) { if (!gi.grab) return; bcast(room, { t: 'event', k: 'release', id: gi.grab.target, gid: gi.id }); gi.grab = null; gi.nextGrab = now() + cd; }
-function killGiantAI(room, gi, by) {
-  gi.alive = false; gi.diedAt = now(); if (gi.grab) releaseAI(room, gi, 0); room.kills++;
-  bcast(room, { t: 'event', k: 'gkill', gid: gi.id, id: by ? by.id : null, kills: room.kills });
-  checkEnd(room);
-}
-function coopTick(room, t, dt) {
-  const alive = [...room.gs.values()].filter(g => g.alive).length;
-  if (t >= room.spawnAt && alive < Math.min(C.COOP_CAP, 3 + soldiersOf(room).length * 2 + Math.floor(room.kills / 4)) && room.kills + alive < C.COOP_GOAL) { spawnGiantAI(room); room.spawnAt = t + Math.max(1800, 4500 - room.kills * 120); }
-  const sol = soldiersOf(room).filter(s => s.alive && s.st), held = new Set(); room.gs.forEach(g => { if (g.grab) held.add(g.grab.target); });
-  for (const [id, gi] of room.gs) {
-    if (!gi.alive) { if (t - gi.diedAt > 12000) room.gs.delete(id); else gi.st = { p: gi.p, yaw: gi.yaw, hy: gi.yaw, sp: 0, run: 0, sc: gi.sc, limbs: gi.limbs, hd: 0, nh: C.NAPE_H * gi.sc, cq: 0, ar: null, hnd: null }; continue; }
-    const legs = gi.limbs[2] + gi.limbs[3], leg = legs === 0 ? 1 : legs === 1 ? .5 : .25, run = 9 * gi.kind.sp * leg;
-    let tg = null, bd = 1e9; for (const s of sol) { if (held.has(s.id)) continue; const d = h2(s.st.p, gi.p); if (d < bd) { bd = d; tg = s; } }
-    let want = 0, goal = null;
-    if (gi.grab) { if (t >= gi.grab.until) { const v = room.players.get(gi.grab.target); const gid = gi.id; gi.grab = null; gi.nextGrab = t + C.AI_GRAB_CD; if (v) { bcast(room, { t: 'event', k: 'eat', id: v.id, gid }); kill(room, v, 'eat'); } if (room.phase !== 'playing') return; } }
-    else if (gi.entering) { goal = [gi.gate[0] * 250, gi.gate[1] * 250]; if (gi.gate[0]) goal[1] = gi.p[2]; else goal[0] = gi.p[0]; want = run; if (Math.max(Math.abs(gi.p[0]), Math.abs(gi.p[2])) < 300) gi.entering = false; }
-    else if (tg) {
-      goal = [tg.st.p[0], tg.st.p[2]]; want = bd > 8 * gi.sc ? run : 0;
-      if (t >= gi.nextGrab && !(gi.limbs[0] && gi.limbs[1]) && bd <= 11 * gi.sc + C.SLACK && tg.st.p[1] <= 22 * gi.sc) { gi.grab = { target: tg.id, until: t + C.GRAB_MS }; held.add(tg.id); bcast(room, { t: 'event', k: 'grab', id: tg.id, gid: gi.id, arm: gi.limbs[0] ? 1 : 0 }); }
-    }
-    if (goal) { const dy = angd(Math.atan2(goal[0] - gi.p[0], goal[1] - gi.p[2]), gi.yaw), st2 = 1.5 * dt; gi.yaw += Math.max(-st2, Math.min(st2, dy)); }
-    if (gi.grab) want = 0;
-    gi.spd += (want - gi.spd) * Math.min(1, 4 * dt); gi.p[0] += Math.sin(gi.yaw) * gi.spd * dt; gi.p[2] += Math.cos(gi.yaw) * gi.spd * dt;
-    gi.st = { p: gi.p.slice(), yaw: gi.yaw, hy: gi.yaw, sp: gi.spd, run: gi.spd > 11 ? 1 : 0, sc: gi.sc, limbs: gi.limbs.slice(), hd: 0, nh: C.NAPE_H * gi.sc, cq: 0, ar: gi.grab ? [[0, .9, 8], [0, .9, 8]] : null, hnd: null };
-    gi.hist.push({ t, p: gi.p.slice(), hy: gi.yaw, sc: gi.sc, nh: C.NAPE_H * gi.sc }); if (gi.hist.length > 14) gi.hist.shift();
-  }
-  for (const p of room.players.values()) { // 倒れた仲間の救助: 生きている味方が近くにいる間、進捗が溜まる
+function coopTick(room, t, dt) { // 倒れた仲間の救助: 生きている味方が近くにいる間、進捗が溜まる
+  const sol = soldiersOf(room).filter(s => s.alive && s.st);
+  for (const p of room.players.values()) {
     if (!p.downed) continue;
     const near = sol.some(s => s.id !== p.id && h2(s.st.p, p.dpos) <= C.RESCUE_R && Math.abs(s.st.p[1] - p.dpos[1]) <= 14);
     p.rp = near ? Math.min(1, p.rp + dt / C.RESCUE_S) : Math.max(0, p.rp - dt / 6);
@@ -312,7 +275,7 @@ setInterval(() => {
     const np = room.napePending;
     if (np && t >= np.at) { room.napePending = null; const s = room.players.get(np.id), gg = giantOf(room); if (s && gg) { bcast(room, { t: 'event', k: 'nape', id: s.id }); endMatch(room, 'soldiers', 'nape'); continue; } }
     const g = giantOf(room);
-    const co = room.coop ? { gl: [...room.gs.values()].filter(x => x.st).map(x => ({ id: x.id, dead: x.alive ? 0 : 1, grab: x.grab ? 1 : 0, gid: x.grab ? x.grab.target : null, ...x.st })), dn: soldiersOf(room).filter(x => x.downed).map(x => ({ id: x.id, p: x.dpos, pr: Math.round(x.rp * 100) / 100, tl: Math.max(0, Math.round((C.RESCUE_WINDOW - (t - x.dT0)) / 1000)) })), ck: room.kills } : {};
+    const co = room.coop ? { dn: soldiersOf(room).filter(x => x.downed).map(x => ({ id: x.id, p: x.dpos, pr: Math.round(x.rp * 100) / 100, tl: Math.max(0, Math.round((C.RESCUE_WINDOW - (t - x.dT0)) / 1000)) })), ck: room.kills } : {};
     bcast(room, { t: 'snap', ...co, ts: t, al: soldiersOf(room).filter(x => x.alive).length,
       s: soldiersOf(room).filter(p => p.st).map(p => ({ id: p.id, a: p.alive ? 1 : 0, c: p.connected ? 1 : 0, ...p.st })),
       g: g && g.st ? { id: g.id, c: g.connected ? 1 : 0, ...g.st, grab: room.grab ? 1 : 0, gid: room.grab ? room.grab.target : null, guard: t < room.guardUntil ? 1 : 0 } : null });
