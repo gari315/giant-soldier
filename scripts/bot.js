@@ -1,6 +1,6 @@
 'use strict';
 // テスト用ボット。 使い方:
-//   node scripts/bot.js --room ABCD [--count 3] [--url ws://localhost:3000]   兵士ボットを部屋に参加させ、巨人に向かって飛び回らせる
+//   node scripts/bot.js --room あ [--count 3] [--url ws://localhost:3000]   兵士ボットを部屋に参加させ、巨人に向かって飛び回らせる
 //   node scripts/bot.js --selftest [--url ws://localhost:3000]               サーバーの部屋・判定ロジックを自動検証
 const WebSocket = require('ws');
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i < 0 ? d : (process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : true); };
@@ -39,7 +39,7 @@ async function selftest() {
 
   // --- ロビー ---
   E.send({ t: 'join', code: 'ZZZZ', name: 'E' }); ok((await E.until(m => m.t === 'err'))?.m === 'noRoom', '存在しない部屋コードは拒否');
-  A.send({ t: 'create', name: 'A' }); await A.until(m => m.t === 'joined'); ok(/^[A-Z2-9]{4}$/.test(A.code), '4文字の部屋コードで作成 ' + A.code);
+  A.send({ t: 'create', name: 'A' }); await A.until(m => m.t === 'joined'); ok(/^[ぁ-ゖ]{1,2}$/.test(A.code), 'ひらがなの部屋コードで作成 ' + A.code);
   A.send({ t: 'role', role: 'giant' }); await sleep(80); A.send({ t: 'start' }); ok((await A.until(m => m.t === 'err'))?.m === 'needSoldier', '兵士不在では開始できない');
   A.send({ t: 'role', role: 'soldier' }); await sleep(80);
   for (const b of [B, C, D, G]) { b.send({ t: 'join', code: A.code, name: b.name }); await b.until(m => m.t === 'joined'); }
