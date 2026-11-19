@@ -525,7 +525,16 @@ const ONL = (() => {
   }
   function clearDown() { if (O.downFx) O.downFx.forEach(f => { S.remove(f.pillar); S.remove(f.ring); f.tag.remove(); }); O.downFx = new Map(); }
   function applyLimb(key, gid) {
+    if (O.passCnt) delete O.passCnt[key];
     const o = gid != null && O.gmap ? O.gmap.get(gid) : GI[0]; if (o && o.gs.parts[key] && !o.gs.parts[key].severed) { O.applying = true; try { severLimb(o, key, new THREE.Vector3(o.G.position.x, o.G.position.y + 10, o.G.position.z), true); } finally { O.applying = false; } }
+  }
+  function applyPass(key, sp) { // 切断パスの通知を受けたときの表示。回数の合算は巨人の画面でのみ数える（全兵士のパスをまとめて警告する）
+    if (!isG() || O.coop) return;
+    const now = Date.now(); O.passCnt = O.passCnt || {}; const e = O.passCnt[key]; if (!e || now - e.t > 6000) O.passCnt[key] = { n: 0, t: now };
+    O.passCnt[key].n++; O.passCnt[key].t = now; const left = Math.max(0, 2 - O.passCnt[key].n);
+    const o = GI[0]; useG(o); const root = key === 'leftArm' ? arms[0].sh : key === 'rightArm' ? arms[1].sh : key === 'leftLeg' ? legs[0].th : legs[1].th;
+    const wp = root.getWorldPosition(new THREE.Vector3()); spark(wp, sp ? 0xffa030 : 0xffb070); sfx('chop', wp, 1, .05);
+    bigMsg('⚠ ' + LIMB_LABELS[key] + 'に' + (sp ? '雷槍' : '斬撃') + 'が当たった！' + (left ? ' あと' + left + '回で切断' : ''), '#ffb454', 1300);
   }
   function onEvent(m) {
     switch (m.k) {
@@ -542,9 +551,10 @@ const ONL = (() => {
       case 'kicked': { useG(GI[0]); const R = O.KICK_R * G.scale.x; O.kickDelay = {}; (m.victims || []).forEach(id => { const r = O.rem.get(id), pp = id === NET.id ? P.pos : r && r.mesh.position; if (pp) O.kickDelay[id] = Math.min(.35, Math.hypot(pp.x - G.position.x, pp.z - G.position.z) / R * .35); }); break; }
       case 'napeBlocked': bigMsg('🛡 うなじ守りに弾かれた！', '#ff9a6a', 1600); shake = Math.max(shake, 1); flash(false); break;
       case 'nape': O.napeBy = m.id; flash(true); shake = Math.max(shake, 1.5); slowmo(2.6); break; // うなじを斬った瞬間（結果は直後に届く）
-      case 'guard': O.guardUntil = Date.now() + m.ms; if (m.left != null) O.guardLeft = m.left; bigMsg(isG() ? '🛡 うなじ守り発動（残り' + O.guardLeft + '回）' : '🛡 うなじ守り発動！ 約' + (m.ms / 1000).toFixed(1) + '秒間は斬れない（残り' + O.guardLeft + '回）', '#7fe3ff', m.ms); if (!isG()) { flash(true); shake = Math.max(shake, .5); } if (!isG() && P.slash) { P.slash = false; P.slashT = 0; P.sw2 = false; toast('うなじ守りで弾かれた！'); } break;
+      case 'guard': O.guardUntil = Date.now() + m.ms; if (isG()) O.rem.forEach(r => { r.pinUntil = 0; }); if (m.left != null) O.guardLeft = m.left; bigMsg(isG() ? '🛡 うなじ守り発動（残り' + O.guardLeft + '回）' : '🛡 うなじ守り発動！ 約' + (m.ms / 1000).toFixed(1) + '秒間は斬れない（残り' + O.guardLeft + '回）', '#7fe3ff', m.ms); if (!isG()) { flash(true); shake = Math.max(shake, .5); } if (!isG() && P.slash) { P.slash = false; P.slashT = 0; P.sw2 = false; toast('うなじ守りで弾かれた！'); } break;
       case 'dead': onDead(m.id, m.by); break;
       case 'limb': applyLimb(m.key, m.gid); break;
+      case 'lpass': applyPass(m.key, m.sp); break;
       case 'roar': { O.roarUntil = Date.now() + (m.ms || 4000); O.roarMouth = Date.now() + 1400; shake = Math.max(shake, .8);
         if (isG()) toast('咆哮！ 全員の位置が見える'); else if (!O.dead) popup('巨人の咆哮！ 位置を知られた', 'big'); break; }
     }
@@ -553,6 +563,7 @@ const ONL = (() => {
   O.selfDown = by => { const n = Date.now(); if (O.dead || n - (O.downSent || 0) < 1500) return; O.downSent = n; NET.send({ t: 'event', k: 'down', by }); // 協力: 食べられた → 倒れた状態へ（救助待ち）
     GI.forEach(o => { const q = o.gs; if (q.grab === 2) { q.grab = 0; q.recover = 2; q.gt = 3; q.ch = 0; } }); held.visible = false; P.eaten = true; };
   O.sever = (key, o) => NET.send({ t: 'event', k: 'limb', key, gid: o && o.gid, sp: O.viaSpear ? 1 : 0 });            // 自分の刃で切断した → サーバー経由で全員へ
+  O.pass = (key, sp) => NET.send({ t: 'event', k: 'lpass', key, sp: sp ? 1 : 0 });                                     // 切断パス（刃の通過／雷槍の命中）→ 全員へ通知（巨人への警告用）
   O.nape = gi => { P.slash = false; P.slashT = 0; P.sw2 = false; if (Date.now() < O.napeCd) return; O.napeCd = Date.now() + 1200; NET.send({ t: 'event', k: 'nape', gid: gi && gi.gid }); }; // うなじ斬りの申告（確定はサーバー）
 
   // ---- 結果画面 ----
@@ -658,8 +669,24 @@ const ONL = (() => {
         let r = O.rem.get(sb.id); if (!sb.a || (O.grab && O.grab.id === sb.id)) { if (r) { r.mesh.visible = false; r.line.visible = false; r.tvis = false; r.tag.style.display = 'none'; if (r.beam) r.beam.visible = false; } continue; }
         if (!r) r = mk(sb.id); r.mesh.visible = r.line.visible = true;
         let x = lp(sa.p[0], sb.p[0], k), y = lp(sa.p[1], sb.p[1], k), z = lp(sa.p[2], sb.p[2], k); const yaw = sa.yaw + ad(sb.yaw, sa.yaw) * k, hpv = O.coop && O.heldPos.get(sb.id); if (hpv) { x = hpv.x; y = hpv.y + 1.7; z = hpv.z; }
-        const dcam = Math.hypot(x - cam.position.x, y - cam.position.y, z - cam.position.z), ms = giant ? Math.max(2, Math.min(9, dcam / 22)) : Math.max(1, Math.min(4, dcam / 55)); // 遠いほど大きく描く（判定は変わらない）
-        r.mesh.scale.setScalar(ms); r.mesh.position.set(x, y - 1.7 - O.FEET * ms, z); r.mesh.rotation.set(sb.f & 1 ? .3 : 0, yaw, 0); // 巨人からは兵士が小さすぎるので2倍で表示
+        const dcam = Math.hypot(x - cam.position.x, y - cam.position.y, z - cam.position.z); let ms = giant ? Math.max(2, Math.min(9, dcam / 22)) : Math.max(1, Math.min(4, dcam / 55)); // 遠いほど大きく描く（判定は変わらない）
+        let mx = x, my = y - 1.7 - O.FEET * ms, mz = z, mYaw = yaw; // 描画位置（通常は補間位置）。巨人からは兵士が小さすぎるので2倍で表示
+        if (giant && !O.coop) { // 巨人の画面のみ: うなじ斬り中（同期フラグ f&8）の兵士を、巨人のうなじの真後ろに固定して表示する（兵士本人の画面と実位置は変えない）
+          if (sb.f & 8) {
+            if (!r.pinWarned) { r.pinWarned = true; const np0 = GI[0].nape.getWorldPosition(new THREE.Vector3()); bigMsg('⚠ うなじを斬られている！', '#ff5a48', 1200); flash(false); shake = Math.max(shake, .7); sfx('chop', np0, 2, .12); }
+            r.pinUntil = now + 450; // モーション終了（0.9秒）後も、サーバーの確定（0.25秒）までは固定を保つ
+          } else r.pinWarned = false;
+          if (now < (r.pinUntil || 0)) {
+            const o = GI[0], np = o.nape.getWorldPosition(new THREE.Vector3()), hv = o.headG.getWorldPosition(new THREE.Vector3()), fw = o.headG.localToWorld(new THREE.Vector3(0, 0, 1)).sub(hv); fw.y = 0;
+            if (fw.lengthSq() > 1e-6) { fw.normalize(); const sc = o.G.scale.x, px = np.x - fw.x * 2.2 * sc, pz = np.z - fw.z * 2.2 * sc, py = np.y + 1.2 * sc;
+              ms = Math.max(2, Math.min(9, Math.hypot(px - cam.position.x, py - cam.position.y, pz - cam.position.z) / 22));
+              mx = px; mz = pz; my = py - 1.7 - O.FEET * ms; mYaw = Math.atan2(fw.x, fw.z); r.pinPos = [mx, my, mz]; r.relT0 = 0; }
+          } else if (r.pinPos) { // 固定解除（守りで弾かれた等）: うなじの位置から落ちながら実位置へ戻る（元の位置へ瞬間移動はさせない）
+            if (!r.relT0) r.relT0 = now; const p = Math.min(1, (now - r.relT0) / 500);
+            if (p >= 1) r.pinPos = null; else { mx = lp(r.pinPos[0], mx, p); mz = lp(r.pinPos[2], mz, p); my = lp(r.pinPos[1], my, p) - Math.sin(p * Math.PI) * 1.5; }
+          }
+        }
+        r.mesh.scale.setScalar(ms); r.mesh.position.set(mx, my, mz); r.mesh.rotation.set(sb.f & 1 ? .3 : 0, mYaw, 0);
         const ws = (k > .5 ? sb : sa).w, ps = r.line.geometry.attributes.position, hip = [x, y - .8, z];
         for (let j = 0; j < 2; j++) { const q = ws[j] || hip; ps.setXYZ(j * 2, hip[0], hip[1], hip[2]); ps.setXYZ(j * 2 + 1, q[0], q[1], q[2]); }
         ps.needsUpdate = true;
@@ -667,9 +694,9 @@ const ONL = (() => {
         if ((sb.f & 12) || nsp > 15) r.noisyUntil = tn + 1500;
         if (tn < (r.noisyUntil || 0) && Math.random() < .35) steam.emit(new THREE.Vector3(x, y - .6, z), new THREE.Vector3((Math.random() - .5) * 2, 1 + Math.random() * 2, (Math.random() - .5) * 2), giant ? 2.8 : 1.4, 0);
         if (giant) { if (!r.beam) { r.beam = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 1, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: .3, depthTest: false, depthWrite: false })); r.beam.renderOrder = 999; r.beam.frustumCulled = false; S.add(r.beam); }
-          const ro = tn < O.roarUntil, bh = ro ? 140 : 50; r.beam.visible = true; r.beam.scale.set(ro ? 2.2 : 1, bh, ro ? 2.2 : 1); r.beam.position.set(x, y - 1.7 + bh / 2, z); r.beam.material.color.setHex(ro ? 0xff4a3a : 0xffb454); r.beam.material.opacity = ro ? .6 : .3; // 巨人の画面では、兵士の位置に光の柱（壁越しでも見える）。咆哮中は太く赤く
+          const ro = tn < O.roarUntil, bh = ro ? 140 : 50; r.beam.visible = true; r.beam.scale.set(ro ? 2.2 : 1, bh, ro ? 2.2 : 1); r.beam.position.set(mx, my + O.FEET * ms + bh / 2, mz); r.beam.material.color.setHex(ro ? 0xff4a3a : 0xffb454); r.beam.material.opacity = ro ? .6 : .3; // 巨人の画面では、兵士の位置に光の柱（壁越しでも見える）。咆哮中は太く赤く
         } else if (r.beam) r.beam.visible = false;
-        r.tp = [x, y - 1.5 + 1.9 * ms, z]; r.rp = [x, y - 1.7 + .9 * ms, z]; r.cy = y - .6; r.col = colorOf(sb.id); r.tn = nameOf(sb.id) + (sb.c ? '' : '（切断中）'); r.tc = sb.c ? 1 : 0; r.tvis = true; // 名前タグは頭のすぐ上（カメラ確定後に配置）
+        r.tp = [x, y - 1.5 + 1.9 * ms, z]; r.rp = (giant && !O.coop && (now < (r.pinUntil || 0) || r.pinPos)) ? [mx, my + O.FEET * ms + .9 * ms, mz] : [x, y - 1.7 + .9 * ms, z]; r.cy = y - .6; // tp（掴み等の判定用）は実位置のまま。rp（名前タグ位置）だけ固定表示に追随 r.col = colorOf(sb.id); r.tn = nameOf(sb.id) + (sb.c ? '' : '（切断中）'); r.tc = sb.c ? 1 : 0; r.tvis = true; // 名前タグは頭のすぐ上（カメラ確定後に配置）
       }
       O.rem.forEach((r, id) => { if (!seen.has(id)) { r.mesh.visible = r.line.visible = false; r.tvis = false; r.tag.style.display = 'none'; if (r.beam) r.beam.visible = false; } });
       // 相手の巨人（兵士側で表示）: 位置・向き・頭・速度を補間し、歩行アニメは既存の姿勢計算で再生。欠損は申告に合わせる
