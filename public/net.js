@@ -670,23 +670,25 @@ const ONL = (() => {
         if (!r) r = mk(sb.id); r.mesh.visible = r.line.visible = true;
         let x = lp(sa.p[0], sb.p[0], k), y = lp(sa.p[1], sb.p[1], k), z = lp(sa.p[2], sb.p[2], k); const yaw = sa.yaw + ad(sb.yaw, sa.yaw) * k, hpv = O.coop && O.heldPos.get(sb.id); if (hpv) { x = hpv.x; y = hpv.y + 1.7; z = hpv.z; }
         const dcam = Math.hypot(x - cam.position.x, y - cam.position.y, z - cam.position.z); let ms = giant ? Math.max(2, Math.min(9, dcam / 22)) : Math.max(1, Math.min(4, dcam / 55)); // 遠いほど大きく描く（判定は変わらない）
-        let mx = x, my = y - 1.7 - O.FEET * ms, mz = z, mYaw = yaw; // 描画位置（通常は補間位置）。巨人からは兵士が小さすぎるので2倍で表示
+        let mx = x, my = y - 1.7 - O.FEET * ms, mz = z, mYaw = yaw, mRotX = sb.f & 1 ? .3 : 0; // 描画位置（通常は補間位置）。巨人からは兵士が小さすぎるので2倍で表示
         if (giant && !O.coop) { // 巨人の画面のみ: うなじ斬り中（同期フラグ f&8）の兵士を、巨人のうなじの真後ろに固定して表示する（兵士本人の画面と実位置は変えない）
           if (sb.f & 8) {
-            if (!r.pinWarned) { r.pinWarned = true; const np0 = GI[0].nape.getWorldPosition(new THREE.Vector3()); bigMsg('⚠ うなじを斬られている！', '#ff5a48', 1200); flash(false); shake = Math.max(shake, .7); sfx('chop', np0, 2, .12); }
+            if (!r.pinWarned) { r.pinWarned = true; r.pinStart = now; const np0 = GI[0].nape.getWorldPosition(new THREE.Vector3()); bigMsg('⚠ うなじを斬られている！', '#ff5a48', 1200); flash(false); shake = Math.max(shake, .7); sfx('chop', np0, 2, .12); }
             r.pinUntil = now + 450; // モーション終了（0.9秒）後も、サーバーの確定（0.25秒）までは固定を保つ
           } else r.pinWarned = false;
           if (now < (r.pinUntil || 0)) {
             const o = GI[0], np = o.nape.getWorldPosition(new THREE.Vector3()), hv = o.headG.getWorldPosition(new THREE.Vector3()), fw = o.headG.localToWorld(new THREE.Vector3(0, 0, 1)).sub(hv); fw.y = 0;
             if (fw.lengthSq() > 1e-6) { fw.normalize(); const sc = o.G.scale.x, px = np.x - fw.x * 2.2 * sc, pz = np.z - fw.z * 2.2 * sc, py = np.y + 1.2 * sc;
               ms = Math.max(2, Math.min(9, Math.hypot(px - cam.position.x, py - cam.position.y, pz - cam.position.z) / 22));
-              mx = px; mz = pz; my = py - 1.7 - O.FEET * ms; mYaw = Math.atan2(fw.x, fw.z); r.pinPos = [mx, my, mz]; r.relT0 = 0; }
+              mx = px; mz = pz; my = py - 1.7 - O.FEET * ms; mYaw = Math.atan2(fw.x, fw.z); r.pinPos = [mx, my, mz]; r.relT0 = 0;
+              const ph = Math.min(1, (now - (r.pinStart || now)) / 900); mRotX = Math.sin(ph * Math.PI * 4) * .55; // うなじを削ぐアニメーション: 0.9秒で2回、体ごと刃を振り下ろす（兵士本人の斬撃モーションと同期）
+              if (Math.random() < .4) { spark(np, 0xcc1515); try { blood.emit(np, new THREE.Vector3((Math.random() - .5) * 16, Math.random() * 14, (Math.random() - .5) * 16), 1.1, 30); } catch (e) {} } }
           } else if (r.pinPos) { // 固定解除（守りで弾かれた等）: うなじの位置から落ちながら実位置へ戻る（元の位置へ瞬間移動はさせない）
             if (!r.relT0) r.relT0 = now; const p = Math.min(1, (now - r.relT0) / 500);
             if (p >= 1) r.pinPos = null; else { mx = lp(r.pinPos[0], mx, p); mz = lp(r.pinPos[2], mz, p); my = lp(r.pinPos[1], my, p) - Math.sin(p * Math.PI) * 1.5; }
           }
         }
-        r.mesh.scale.setScalar(ms); r.mesh.position.set(mx, my, mz); r.mesh.rotation.set(sb.f & 1 ? .3 : 0, mYaw, 0);
+        r.mesh.scale.setScalar(ms); r.mesh.position.set(mx, my, mz); r.mesh.rotation.set(mRotX, mYaw, 0);
         const ws = (k > .5 ? sb : sa).w, ps = r.line.geometry.attributes.position, hip = [x, y - .8, z];
         for (let j = 0; j < 2; j++) { const q = ws[j] || hip; ps.setXYZ(j * 2, hip[0], hip[1], hip[2]); ps.setXYZ(j * 2 + 1, q[0], q[1], q[2]); }
         ps.needsUpdate = true;
@@ -706,6 +708,7 @@ const ONL = (() => {
         const o = GI[0]; useG(o); G.visible = true; if (Math.abs(G.scale.x - gb.sc) > .01) G.scale.setScalar(gb.sc);
         LIMB_KEYS.forEach((key, li) => { if (gb.limbs[li] && !gs.parts[key].severed) applyLimb(key); });
         gs.yaw = ga.yaw + ad(gb.yaw, ga.yaw) * k; headG.rotation.y = lp(ga.hd, gb.hd, k); gs.spd = lp(ga.sp, gb.sp, k); gs.run = gb.run ? 5 : 0; gs.cq = gb.cq ? 1 : 0; gs.dead = O.giantDead ? 1 : 0; gs.mode = 'chase';
+        gs.stag = Math.max(0, (gs.stag || 0) - realDt); gs.hurt = Math.max(0, (gs.hurt || 0) - realDt); // 兵士側の巨人（人形）はAIループが回らないため、ひるみをここで減らす（減らさないと雷槍・切断のたびにひるみ姿勢のまま固まる）
         if (legLossOf(gs) > 0) updateLegless(realDt, gs.spd > .4, gs.trait.walkSpeed); else { gs.phase += gs.spd * realDt * 1.8 / (17.4 * (.42 + .33 * gs.rn) * G.scale.x); }
         G.position.set(lp(ga.p[0], gb.p[0], k), lp(ga.p[1], gb.p[1], k), lp(ga.p[2], gb.p[2], k)); G.rotation.y = gs.yaw; O.armT = gb.ar || null; O.pose(o, realDt);
       }
