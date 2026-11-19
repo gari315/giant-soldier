@@ -141,6 +141,11 @@ function handleEvent(room, p, m) {
     if (h2(p.st.p, g.st.p) > (m.sp ? C.SPEAR_RANGE : 25) * g.st.sc + C.SLACK) return; // m.sp: 雷槍による切断（遠距離OK）
     room.limbs.add(m.key); bcast(room, { t: 'event', k: 'limb', key: m.key, id: p.id }); return;
   }
+  if (m.k === 'lpass' && p.role === 'soldier') { // 切断パス（刃の通過／雷槍の命中）の通知: 切断の判定はせず、距離だけ検証して全員へ中継（巨人への警告表示用）
+    if (!g || !g.st || !p.alive || !p.st || !LIMBS.includes(m.key) || room.limbs.has(m.key)) return;
+    if (h2(p.st.p, g.st.p) > (m.sp ? C.SPEAR_RANGE : 25) * g.st.sc + C.SLACK) return; // 雷槍のパスは遠距離からでも可（刃は近距離のみ）
+    bcast(room, { t: 'event', k: 'lpass', key: m.key, id: p.id, sp: m.sp ? 1 : 0 }); return;
+  }
   if (p.role !== 'giant' || !giantOK(room, p)) return;
   const st = p.st, sc = st.sc, t = now();
   if (m.k === 'grab') { // 手が触れた兵士は、いつでも掴める（向き・距離の前方条件・うなじ守り中でも可）。判定は申告された手の位置とのずれで検証
