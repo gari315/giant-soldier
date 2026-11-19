@@ -118,10 +118,10 @@ function napeAt(e, s) { // e: 巨人の状態スナップショット。うな�
   const fx = Math.sin(e.hy), fz = Math.cos(e.hy);
   return (s.st.p[0] - e.p[0]) * fx + (s.st.p[2] - e.p[2]) * fz < 0; // 背後
 }
-function validNape(room, s, g) { // g: 巨人（人間のプレイヤー or AI）。直近約0.5秒の位置のどれかで条件を満たせばOK（遅延補償）
+function validNape(room, s, g) { // g: 巨人（人間のプレイヤー or AI）。直近約1.4秒の位置のどれかで条件を満たせばOK（斬撃モーション0.9秒＋遅延の補償: 斬り始めた後に巨人が走って離れても倒せる）
   if (!s.st || !g.st || !s.alive || now() < room.guardUntil + C.GUARD_TAIL) return false;
   if (napeAt(g.st, s)) return true;
-  const t = now(); return (g.hist || []).some(h => t - h.t < 500 && napeAt(h, s));
+  const t = now(); return (g.hist || []).some(h => t - h.t < 1400 && napeAt(h, s));
 }
 function handleEvent(room, p, m) {
   if (room.phase !== 'playing') return;
@@ -185,7 +185,7 @@ function handleState(room, p, m) {
     p.st = { p: pos, yaw: num(m.yaw, 100), hy: num(m.hy, 100), sp: num(m.sp, 200), run: m.run ? 1 : 0, sc: Math.max(.5, Math.min(3, num(m.sc, 10) || 1)),
       limbs: [0, 1, 2, 3].map(i => (m.limbs && m.limbs[i]) ? 1 : 0), cq: m.cq ? 1 : 0, hnd: [0, 1].map(i => vec(m.hnd && m.hnd[i])), hd: num(m.hd, 100), nh: Math.max(0, Math.min(200, num(m.nh, 200))), np: vec(m.np), hp: vec(m.hp), hf: (Array.isArray(m.hf) && m.hf.length === 2) ? [num(m.hf[0], 1), num(m.hf[1], 1)] : null, guard: 0,
       ar: [0, 1].map(i => (m.ar && Array.isArray(m.ar[i])) ? [num(m.ar[i][0], 1), num(m.ar[i][1], 1), m.ar[i][2] == null ? null : num(m.ar[i][2], 30)].concat(m.ar[i].length > 5 ? [num(m.ar[i][3], 420), num(m.ar[i][4], 420), num(m.ar[i][5], 420)] : []) : null) }; // 腕の操作: [横,上下,前方距離(,目標のワールド座標x,y,z)] または null
-    (p.hist = p.hist || []).push({ t: now(), p: pos, hy: p.st.hy, sc: p.st.sc, nh: p.st.nh, np: p.st.np, hp: p.st.hp, hf: p.st.hf }); if (p.hist.length > 14) p.hist.shift(); // うなじ判定の遅延補償用
+    (p.hist = p.hist || []).push({ t: now(), p: pos, hy: p.st.hy, sc: p.st.sc, nh: p.st.nh, np: p.st.np, hp: p.st.hp, hf: p.st.hf }); const ht = now(); while (p.hist.length && (ht - p.hist[0].t > 1500 || p.hist.length > 40)) p.hist.shift(); // うなじ判定の遅延補償用（斬撃モーション0.9秒の間に巨人が走って離れても、斬り始めた時点の位置で判定できるよう1.5秒分を保持）
   }
 }
 
