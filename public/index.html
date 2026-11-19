@@ -97,7 +97,7 @@ button.b:focus-visible{outline:3px solid #fff}
 <div id="setOv"><div class="panel"><h1>設定</h1>
 <p class="note">三人称視点でのカメラ位置です。動かすと背景にすぐ反映されます（一人称のときは「視点を切り替える」で三人称にしてください）。設定は自動で保存されます。</p>
 <div class="setRow"><div>カメラ距離（ズーム） <b id="camDV">9.0</b></div><div class="sl"><button class="b sm" id="camDm">−</button><input type="range" id="camD" min="3" max="22" step="0.5" value="9"><button class="b sm" id="camDp">＋</button></div></div>
-<div class="setRow"><div>カメラ高さ <b id="camHV">1.50</b></div><div class="sl"><button class="b sm" id="camHm">−</button><input type="range" id="camH" min="-1" max="6" step="0.25" value="1.5"><button class="b sm" id="camHp">＋</button></div></div>
+<div class="setRow"><div>カメラ高さ <b id="camHV">3.25</b></div><div class="sl"><button class="b sm" id="camHm">−</button><input type="range" id="camH" min="-1" max="6" step="0.25" value="3.25"><button class="b sm" id="camHp">＋</button></div></div>
 <div class="setRow"><div>BGM音量 <b id="bgmV">60</b></div><div class="sl"><input type="range" id="bgmR" min="0" max="100" step="5" value="60"></div></div>
 <div class="setRow"><div>効果音の音量 <b id="seV">80</b></div><div class="sl"><input type="range" id="seR" min="0" max="100" step="5" value="80"></div></div>
 <div class="setRow"><div class="sl" style="flex-wrap:wrap;gap:12px"><label><input type="checkbox" id="mapC" checked> ミニマップ</label><label><input type="checkbox" id="arwC" checked> 巨人の方向表示</label><button class="b sm" id="muteB" style="font-size:14px">音 ON</button></div></div>
@@ -819,8 +819,8 @@ function requestGamePointerLock(){
  }
 }
 // ---- 設定(三人称カメラ) ----
-const CAMSET={dist:9,height:1.5};
-try{const j=JSON.parse(localStorage.getItem('giantCam')||'null');if(j){CAMSET.dist=Math.max(3,Math.min(22,+j.dist||9));CAMSET.height=Math.max(-1,Math.min(6,isNaN(+j.height)?1.5:+j.height));}}catch(e){}
+const CAMSET={dist:9,height:3.25}; // カメラ高さの既定は3.25: 三人称でプレイヤーが画面中央より下（照準の下）に表示される以前の見え方。1.5だとプレイヤーが中央に重なり照準を隠す
+try{const j=JSON.parse(localStorage.getItem('giantCam')||'null');if(j){CAMSET.dist=Math.max(3,Math.min(22,+j.dist||9));CAMSET.height=Math.max(-1,Math.min(6,isNaN(+j.height)?3.25:+j.height));if(+j.height===1.5)CAMSET.height=3.25;}}catch(e){} // 旧既定値1.5が保存されている場合は新しい既定値へ移行（自分で1.5以外に調整した人の設定はそのまま）
 function syncCamUI(){$('camD').value=CAMSET.dist;$('camH').value=CAMSET.height;$('camDV').textContent=CAMSET.dist.toFixed(1);$('camHV').textContent=CAMSET.height.toFixed(2);}
 function previewCam(){if(!tp||over)return;const cp=Math.cos(P.pitch);cam.position.set(P.pos.x+Math.sin(P.yaw)*cp*CAMSET.dist,Math.max(.8,P.pos.y-Math.sin(P.pitch)*CAMSET.dist+CAMSET.height),P.pos.z+Math.cos(P.yaw)*cp*CAMSET.dist);cam.updateMatrixWorld(true);R.render(S,cam);}
 function setCam(k,v,lo,hi){CAMSET[k]=Math.max(lo,Math.min(hi,v));syncCamUI();try{localStorage.setItem('giantCam',JSON.stringify(CAMSET));}catch(e){}previewCam();}
