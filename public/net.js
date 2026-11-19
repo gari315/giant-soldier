@@ -350,7 +350,12 @@ const ONL = (() => {
       const mk2 = (i, ox) => [0, 0, null, T.x + ox, T.y, T.z]; O.armT = [null, null];
       if (O.aimBoth) { const rx = Math.cos(O.basis != null ? P.yaw : P.yaw) * 2.2, rz = -Math.sin(P.yaw) * 2.2; if (!sevL) O.armT[0] = [0, 0, null, T.x - rx, T.y, T.z - rz]; if (!sevR) O.armT[1] = [0, 0, null, T.x + rx, T.y, T.z + rz]; }
       else if (!(sevL && sevR)) O.armT[ia] = mk2(ia, 0);
-    } else { O.aimT = null; O.armT = null; }
+    } else { O.aimT = null; O.armT = null;
+      if (O.fp && !O.grab && !O.guard && O.kickT <= 0) { // 一人称: 待機中も利き手（右手、切断時は左手）を視界の下部に構えて、自分の手が見えるようにする（FPSの手の見え方）
+        const sevL2 = gs.parts.leftArm.severed, sevR2 = gs.parts.rightArm.severed;
+        if (!(sevL2 && sevR2)) { const i2 = sevR2 ? 0 : 1, Rs2 = O.AIM_S * G.scale.x; chest.getWorldPosition(aC); const fw2 = cam.getWorldDirection(new THREE.Vector3()), rt2 = new THREE.Vector3().crossVectors(fw2, new THREE.Vector3(0, 1, 0)).normalize(), sg2 = i2 === 1 ? 1 : -1;
+          O.armT = [null, null]; O.armT[i2] = [0, 0, null, aC.x + fw2.x * Rs2 * .55 + rt2.x * Rs2 * .18 * sg2, aC.y + fw2.y * Rs2 * .55 - Rs2 * .22, aC.z + fw2.z * Rs2 * .55 + rt2.z * Rs2 * .18 * sg2]; } }
+    }
     if (O.kickT > 0 && !O.grab) O.armT = [[.9, .5], [-.9, .5]]; // 蹴りの予備動作: 両腕を広げて上げる（兵士に分かりやすく）
     if (O.kickT > 0) { mx = 0; mz = 0; l = 0; } // 蹴り中は動けない
     const dx = c * mx - sn * mz, dz = -sn * mx - c * mz, moving = l > .15, run = !!(keys.ShiftLeft || keys.ShiftRight || O.runBtn);
@@ -414,11 +419,13 @@ const ONL = (() => {
   }
   const aimEl = document.createElement('div'); aimEl.id = 'aimR'; aimEl.innerHTML = '<i></i>'; document.body.appendChild(aimEl);
   function aimStep() { // 手を伸ばすモードの表示: 巨人のまわりの「届く球」と、狙っている点（緑=届く / 橙=遠い）
-    const show = isG() && !over && O.aimOn, now = Date.now(); if (O.aimRing) O.aimRing.visible = show;
+    const fpShow = isG() && !over && !!O.fp; // 一人称では常時表示: 手を伸ばしていない時も「今伸ばせば手が届く点」が分かるようにする
+    const show = isG() && !over && (O.aimOn || fpShow), now = Date.now(); if (O.aimRing) O.aimRing.visible = show;
     if (!show) { aimEl.style.display = 'none'; return; }
     const o = GI[0], sc = o.G.scale.x; if (!O.aimRing) { O.aimRing = new THREE.Group(); const w = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: 0x66e0ff, wireframe: true, transparent: true, opacity: .22, depthWrite: false })), f = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: .06, side: THREE.DoubleSide, depthWrite: false })); O.aimRing.add(w, f); S.add(O.aimRing); }
+    if (fpShow && !(O.aimT && now < O.aimHold)) computeAim('c', 1 / 60); // 表示専用: 画面中央で「届く点」を計算する（aimHoldは更新しないので、これだけでは手は動かない）
     o.chest.getWorldPosition(aV); O.aimRing.visible = true; O.aimRing.position.copy(aV); O.aimRing.scale.setScalar(O.AIM_S * sc); O.aimRing.children.forEach(m => m.material.color.setHex(O.aimOut ? 0xffa040 : 0x66e0ff));
-    if (O.aimMark && O.aimT && now < O.aimHold) { const cv = R.domElement.getBoundingClientRect(), W = cv.width || innerWidth, H = cv.height || innerHeight; V2.copy(O.aimMark).project(cam);
+    if (O.aimMark && O.aimT && (now < O.aimHold || fpShow)) { const cv = R.domElement.getBoundingClientRect(), W = cv.width || innerWidth, H = cv.height || innerHeight; V2.copy(O.aimMark).project(cam);
       if (V2.z < 1) { const col = O.aimOut ? '#ffa040' : '#6f6'; aimEl.style.display = 'block'; aimEl.style.borderColor = col; aimEl.style.color = col; aimEl.style.left = (cv.left + (V2.x * .5 + .5) * W) + 'px'; aimEl.style.top = (cv.top + (-V2.y * .5 + .5) * H) + 'px';
         aimEl.firstChild.textContent = O.aimTxt || ''; } else aimEl.style.display = 'none'; } else aimEl.style.display = 'none';
   }
